@@ -10,12 +10,27 @@ sub main () {
   my $wp = bless {parent_fh => $_[0],
                   server_fh => $_[2],
                   connection_per_worker => $_[1],
+                  shutdown_timeout => 10,
                   id => $$,
                   n => 0}, 'Sarze::Worker::Process';
 
   my $cv = AE::cv;
   $cv->begin;
   $wp->{done} = sub { $cv->end };
+
+  my $shutdown_timer;
+  my $shutdown = sub {
+    $wp->dont_accept_anymore;
+    for (values %{$wp->{connections} or {}}) {
+      $_->close_after_current_response;
+    }
+    delete $wp->{connections};
+    delete $wp->{signals};
+    $shutdown_timer = AE::timer $wp->{shutdown_timeout}, 0, sub {
+      $cv->croak ("$wp->{id}: Shutdown timeout ($wp->{shutdown_timeout})\n");
+      undef $shutdown_timer;
+    };
+  }; # $shutdown
 
   my $rbuf = '';
   $wp->{parent_handle} = AnyEvent::Handle->new
@@ -26,8 +41,7 @@ sub main () {
          while ($rbuf =~ s/^([^\x0A]*)\x0A//) {
            my $line = $1;
            if ($line =~ /\Ashutdown\z/) {
-             $wp->dont_accept_anymore;
-             delete $wp->{signals};
+             $shutdown->();
            } elsif ($line =~ s/^parent_id //) {
              $wp->{id} = $line . '.' . $$;
              $wp->log ("Worker started");
@@ -51,9 +65,11 @@ sub main () {
       my $con = Web::Transport::PSGIServerConnection
           ->new_from_app_and_ae_tcp_server_args
               (\&main::psgi_app, $args, parent_id => $wp->{id});
+      $wp->{connections}->{$con} = $con;
       $con->completed->then (sub {
-        $wp->log ("Connection completed ($n of $wp->{connection_per_worker})");
+        $wp->log (sprintf "Connection completed (%s)", $con->id);
         $cv->end;
+        delete $wp->{connections}->{$con};
       });
     }
   };
@@ -61,12 +77,12 @@ sub main () {
   for my $sig (qw(INT TERM QUIT)) {
     $wp->{signals}->{$sig} = AE::signal $sig => sub {
       $wp->log ("SIG$sig received");
-      $wp->dont_accept_anymore;
-      delete $wp->{signals};
+      $shutdown->();
     };
   }
 
   $cv->recv; # main loop
+  undef $shutdown_timer;
 
   $wp->log ("Worker completed");
   close $wp->{parent_fh};
