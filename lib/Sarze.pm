@@ -17,6 +17,7 @@ sub _create_worker ($$$) {
   return if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
+  $fork->eval (q{srand});
   my $worker = $self->{workers}->{$fork} = {accepting => 1, shutdown => sub {}};
   $fork->send_fh ($fh);
 
@@ -128,6 +129,8 @@ sub run ($%) {
         $_->{shutdown}->();
       }
     };
+    # XXX onhup hook
+    # XXX recreate $fork
   }
 
   $self->{forker} = my $forker = AnyEvent::Fork->new;
@@ -136,7 +139,8 @@ sub run ($%) {
     $SIG{CHLD} = 'IGNORE';
   })->require ('Sarze::Worker');
   $forker->eval ($args{code}) if defined $args{code};
-  $forker->send_arg ($args{connection_per_worker} || 100);
+  $forker->send_arg ($args{connections_per_worker} || 1000);
+  $forker->send_arg ($args{seconds_per_worker} || 60*10);
   AnyEvent::Socket::tcp_bind ($args{host}, $args{port}, sub {
     my $fh = shift;
     $self->log ("Main started: $args{host}:$args{port}");

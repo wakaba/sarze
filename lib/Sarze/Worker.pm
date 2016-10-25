@@ -8,8 +8,9 @@ use Web::Transport::PSGIServerConnection;
 
 sub main () {
   my $wp = bless {parent_fh => $_[0],
-                  server_fh => $_[2],
-                  connection_per_worker => $_[1],
+                  server_fh => $_[3],
+                  connections_per_worker => $_[1],
+                  seconds_per_worker => $_[2],
                   shutdown_timeout => 10,
                   id => $$,
                   n => 0}, 'Sarze::Worker::Process';
@@ -18,6 +19,7 @@ sub main () {
   $cv->begin;
   $wp->{done} = sub { $cv->end };
 
+  my $worker_timer;
   my $shutdown_timer;
   my $shutdown = sub {
     $wp->dont_accept_anymore;
@@ -30,6 +32,7 @@ sub main () {
       $cv->croak ("$wp->{id}: Shutdown timeout ($wp->{shutdown_timeout})\n");
       undef $shutdown_timer;
     };
+    undef $worker_timer;
   }; # $shutdown
 
   my $rbuf = '';
@@ -81,6 +84,19 @@ sub main () {
     };
   }
 
+  if ($wp->{seconds_per_worker} > 0) {
+    my $timeout = $wp->{seconds_per_worker};
+    if ($timeout >= 60*10) {
+      $timeout += rand (60*5);
+    } elsif ($timeout >= 60) {
+      $timeout += rand 30;
+    }
+    $worker_timer = AE::timer $timeout, 0, sub {
+      $wp->log ("|seconds_per_worker| elapsed ($timeout)");
+      $shutdown->();
+    };
+  }
+
   $cv->recv; # main loop
   undef $shutdown_timer;
 
@@ -111,7 +127,7 @@ sub accept_next ($) {
   my $n = $self->{n}++;
   $self->log ("Accepted $args->[1]:$args->[2] (connection #$n)");
 
-  $self->dont_accept_anymore if $self->{connection_per_worker} <= $self->{n};
+  $self->dont_accept_anymore if $self->{connections_per_worker} <= $self->{n};
 
   return ($args, $n);
 } # accept_next
