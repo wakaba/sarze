@@ -138,7 +138,18 @@ sub run ($%) {
     use AnyEvent;
     $SIG{CHLD} = 'IGNORE';
   })->require ('Sarze::Worker');
-  $forker->eval ($args{code}) if defined $args{code};
+  $forker->eval ($args{eval}) if defined $args{eval};
+  if (defined $args{psgi_file_name}) {
+    my $name = quotemeta $args{psgi_file_name};
+    $forker->eval (q<
+      my $code = do ">.$name.q<";
+      die $@ if $@;
+      unless (defined $code and ref $code eq 'CODE') {
+        die "|>.$name.q<| does not return a CODE";
+      }
+      *main::psgi_app = $code;
+    >);
+  }
   $forker->send_arg ($args{connections_per_worker} || 1000);
   $forker->send_arg ($args{seconds_per_worker} || 60*10);
   AnyEvent::Socket::tcp_bind ($args{host}, $args{port}, sub {
