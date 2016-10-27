@@ -1,0 +1,50 @@
+=head1 NAME
+
+Sarze - An HTTP server
+
+=head1 XXX
+
+XXX
+
+$p = $server->run (...)
+
+Run the server and return a promise that is resolved when the server
+is stopped.
+
+XXX
+
+$p = $server->start (...)
+
+Run the server and return a promise that is resolved with the server
+object when the server is ready to accept connections.
+
+XXX
+
+$p = $server->stop
+
+Schedule the server to stop and return a promise that is resolved when
+the server is stopped.
+
+XXX
+
+hostports => [[$host, $port], ...]
+
+An array reference of zero or more host/port pair array references.  A
+host/port pair must be either a pair of IP address and port (for TCP
+socket) or a pair of string C<unix/> and path to the file (for UNIX
+domain socket).
+
+XXX
+
+=head1 AUTHOR
+
+Wakaba <wakaba@suikawiki.org>.
+
+=head1 LICENSE
+
+Copyright 2016 Wakaba <wakaba@suikawiki.org>.
+
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut

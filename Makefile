@@ -40,6 +40,6 @@ test: test-deps test-main
 test-deps: deps
 
 test-main:
-	#XXX $(PROVE) t/*.t
+	$(PROVE) t/*.t
 
 ## License: Public Domain.

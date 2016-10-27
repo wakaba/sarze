@@ -1,3 +1,5 @@
+Path::Tiny
+Test::More
 AnyEvent~7.13
 AnyEvent::Fork~1.3
 Canary::Stability~2012

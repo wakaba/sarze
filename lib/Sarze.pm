@@ -13,13 +13,15 @@ sub log ($$) {
 } # log
 
 sub _create_worker ($$$) {
-  my ($self, $fh, $onstop) = @_;
+  my ($self, $fhs, $onstop) = @_;
   return if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
   $fork->eval (q{srand});
   my $worker = $self->{workers}->{$fork} = {accepting => 1, shutdown => sub {}};
-  $fork->send_fh ($fh);
+  for my $fh (@$fhs) {
+    $fork->send_fh ($fh);
+  }
 
   my $onnomore = sub {
     if ($worker->{accepting}) {
@@ -78,13 +80,13 @@ sub _create_worker ($$$) {
 } # _create_worker
 
 sub _create_workers_if_necessary ($$) {
-  my ($self, $fh) = @_;
+  my ($self, $fhs) = @_;
   my $count = 0;
   $count++ for grep { $_->{accepting} } values %{$self->{workers}};
   while ($count < $self->{max_worker_count} and not $self->{shutdowning}) {
-    $self->_create_worker ($fh, sub {
+    $self->_create_worker ($fhs, sub {
       $self->{timer} = AE::timer 1, 0, sub {
-        $self->_create_workers_if_necessary ($fh);
+        $self->_create_workers_if_necessary ($fhs);
         delete $self->{timer};
       };
     });
@@ -92,10 +94,8 @@ sub _create_workers_if_necessary ($$) {
   }
 } # _create_workers_if_necessary
 
-sub run ($%) {
+sub start ($%) {
   my ($class, %args) = @_;
-  $args{host} ||= 0;
-  die 'XXX' unless defined $args{port};
 
   my $self = bless {
     workers => {},
@@ -108,17 +108,17 @@ sub run ($%) {
   $self->{shutdown} = sub {
     $self->{global_cv}->end;
     $self->{shutdown} = sub { };
-    return $self->{shutdowning}++;
+    for (values %{$self->{workers}}) {
+      $_->{shutdown}->();
+    }
+    delete $self->{signals};
+    $self->{shutdowning}++;
   };
 
   for my $sig (qw(INT TERM QUIT)) {
     $self->{signals}->{$sig} = AE::signal $sig => sub {
       $self->log ("SIG$sig received");
-      return if $self->{shutdown}->();
-      for (values %{$self->{workers}}) {
-        $_->{shutdown}->();
-      }
-      delete $self->{signals};
+      $self->{shutdown}->();
     };
   }
   for my $sig (qw(HUP)) {
@@ -152,14 +152,33 @@ sub run ($%) {
   }
   $forker->send_arg ($args{connections_per_worker} || 1000);
   $forker->send_arg ($args{seconds_per_worker} || 60*10);
-  AnyEvent::Socket::tcp_bind ($args{host}, $args{port}, sub {
-    my $fh = shift;
-    $self->log ("Main started: $args{host}:$args{port}");
-    $self->_create_workers_if_necessary ($fh);
-  });
-  return Promise->from_cv ($self->{global_cv})->then (sub {
+  my @fh;
+  my @rstate;
+  for (@{$args{hostports}}) {
+    my ($h, $p) = @$_;
+    AnyEvent::Socket::_tcp_bind ($h, $p, sub { # tcp_bind can't be used for unix domain socket :-<
+      push @rstate, shift;
+      $self->log ("Main bound: $h:$p");
+      push @fh, $rstate[-1]->{fh};
+    });
+  }
+  $self->_create_workers_if_necessary (\@fh);
+  $self->{completed} = Promise->from_cv ($self->{global_cv})->then (sub {
     delete $self->{timer};
+    @rstate = ();
     $self->log ("Main completed");
+  });
+  return Promise->resolve ($self);
+} # start
+
+sub stop ($) {
+  $_[0]->{shutdown}->();
+  return $_[0]->{completed};
+} # stop
+
+sub run ($@) {
+  return shift->start (@_)->then (sub {
+    return $_[0]->{completed};
   });
 } # run
 
@@ -172,3 +191,12 @@ n"
 } # DESTROY
 
 1;
+
+=head1 LICENSE
+
+Copyright 2016 Wakaba <wakaba@suikawiki.org>.
+
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut

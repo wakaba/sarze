@@ -6,14 +6,15 @@ use AnyEvent::Handle;
 use Promise;
 use Web::Transport::PSGIServerConnection;
 
-sub main () {
-  my $wp = bless {parent_fh => $_[0],
-                  server_fh => $_[3],
-                  connections_per_worker => $_[1],
-                  seconds_per_worker => $_[2],
-                  shutdown_timeout => 10,
+sub main {
+  my $wp = bless {shutdown_timeout => 10,
                   id => $$,
-                  n => 0}, 'Sarze::Worker::Process';
+                  n => 0,
+                  server_ws => []}, 'Sarze::Worker::Process';
+  $wp->{parent_fh} = shift;
+  $wp->{connections_per_worker} = shift;
+  $wp->{seconds_per_worker} = shift;
+  $wp->{server_fhs} = [@_];
 
   my $cv = AE::cv;
   $cv->begin;
@@ -35,13 +36,10 @@ sub main () {
     undef $worker_timer;
   }; # $shutdown
 
-  my $rbuf = '';
   $wp->{parent_handle} = AnyEvent::Handle->new
       (fh => $wp->{parent_fh},
        on_read => sub {
-         $rbuf .= $_[0]->{rbuf};
-         $_[0]->{rbuf} = '';
-         while ($rbuf =~ s/^([^\x0A]*)\x0A//) {
+         while ($_[0]->{rbuf} =~ s/^([^\x0A]*)\x0A//) {
            my $line = $1;
            if ($line =~ /\Ashutdown\z/) {
              $shutdown->();
@@ -56,26 +54,30 @@ sub main () {
        on_eof => sub { $_[0]->destroy },
        on_error => sub { $_[0]->destroy });
 
-  $wp->{server_w} = AE::io $wp->{server_fh}, 0, sub {
-    while (1) {
-      $cv->begin;
-      my ($args, $n) = $wp->accept_next;
-      unless (defined $args) {
-        $cv->end;
-        last;
-      }
+  for my $fh (@{$wp->{server_fhs}}) {
+warn "y";
+    push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
+warn "x";
+      while (1) {
+        $cv->begin;
+        my ($args, $n) = $wp->accept_next ($fh);
+        unless (defined $args) {
+          $cv->end;
+          last;
+        }
 
-      my $con = Web::Transport::PSGIServerConnection
-          ->new_from_app_and_ae_tcp_server_args
-              (\&main::psgi_app, $args, parent_id => $wp->{id});
-      $wp->{connections}->{$con} = $con;
-      $con->completed->then (sub {
-        $wp->log (sprintf "Connection completed (%s)", $con->id);
-        $cv->end;
-        delete $wp->{connections}->{$con};
-      });
-    }
-  };
+        my $con = Web::Transport::PSGIServerConnection
+            ->new_from_app_and_ae_tcp_server_args
+                (\&main::psgi_app, $args, parent_id => $wp->{id});
+        $wp->{connections}->{$con} = $con;
+        $con->completed->then (sub {
+          $wp->log (sprintf "Connection completed (%s)", $con->id);
+          $cv->end;
+          delete $wp->{connections}->{$con};
+        });
+      }
+    };
+  } # $fh
 
   for my $sig (qw(INT TERM QUIT)) {
     $wp->{signals}->{$sig} = AE::signal $sig => sub {
@@ -113,11 +115,12 @@ sub log ($$) {
       $_[0]->{id}, $_[1], scalar gmtime time if DEBUG;
 } # log
 
-sub accept_next ($) {
-  my $self = $_[0];
+sub accept_next ($$) {
+  my ($self, $s_fh) = @_;
 
-  return (undef, undef) unless defined $self->{server_fh};
-  my $peer = accept my $fh, $self->{server_fh};
+  return (undef, undef) unless defined $self->{server_ws};
+warn "accept";
+  my $peer = accept (my $fh, $s_fh);
   return (undef, undef) unless $peer;
 
   AnyEvent::fh_unblock $fh;
@@ -138,9 +141,10 @@ sub dont_accept_anymore ($) {
 
   $self->{parent_handle}->push_write ("nomore\x0A");
 
-  delete $self->{server_w};
-  close $self->{server_fh};
-  delete $self->{server_fh};
+  delete $self->{server_ws};
+  for (@{delete $self->{server_fhs}}) {
+    close $_;
+  }
 
   $self->{done}->();
 
@@ -155,3 +159,12 @@ sub DESTROY ($) {
 } # DESTROY
 
 1;
+
+=head1 LICENSE
+
+Copyright 2016 Wakaba <wakaba@suikawiki.org>.
+
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
