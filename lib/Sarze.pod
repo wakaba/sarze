@@ -27,6 +27,10 @@ the server is stopped.
 
 XXX
 
+$p = $server->completed
+
+XXX
+
 hostports => [[$host, $port], ...]
 
 An array reference of zero or more host/port pair array references.  A

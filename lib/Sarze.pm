@@ -175,12 +175,16 @@ sub start ($%) {
 
 sub stop ($) {
   $_[0]->{shutdown}->();
-  return $_[0]->{completed};
+  return $_[0]->completed;
 } # stop
+
+sub completed ($) {
+  return $_[0]->{completed};
+} # completed
 
 sub run ($@) {
   return shift->start (@_)->then (sub {
-    return $_[0]->{completed};
+    return $_[0]->completed;
   });
 } # run
 
