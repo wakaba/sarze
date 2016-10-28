@@ -36,6 +36,26 @@ sub main {
     undef $worker_timer;
   }; # $shutdown
 
+  for my $sig (qw(INT TERM QUIT)) {
+    $wp->{signals}->{$sig} = AE::signal $sig => sub {
+      $wp->log ("SIG$sig received");
+      $shutdown->();
+    };
+  }
+
+  if ($wp->{seconds_per_worker} > 0) {
+    my $timeout = $wp->{seconds_per_worker};
+    if ($timeout >= 60*10) {
+      $timeout += rand (60*5);
+    } elsif ($timeout >= 60) {
+      $timeout += rand 30;
+    }
+    $worker_timer = AE::timer $timeout, 0, sub {
+      $wp->log ("|seconds_per_worker| elapsed ($timeout)");
+      $shutdown->();
+    };
+  }
+
   $wp->{parent_handle} = AnyEvent::Handle->new
       (fh => $wp->{parent_fh},
        on_read => sub {
@@ -55,9 +75,7 @@ sub main {
        on_error => sub { $_[0]->destroy });
 
   for my $fh (@{$wp->{server_fhs}}) {
-warn "y";
     push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
-warn "x";
       while (1) {
         $cv->begin;
         my ($args, $n) = $wp->accept_next ($fh);
@@ -79,26 +97,6 @@ warn "x";
     };
   } # $fh
 
-  for my $sig (qw(INT TERM QUIT)) {
-    $wp->{signals}->{$sig} = AE::signal $sig => sub {
-      $wp->log ("SIG$sig received");
-      $shutdown->();
-    };
-  }
-
-  if ($wp->{seconds_per_worker} > 0) {
-    my $timeout = $wp->{seconds_per_worker};
-    if ($timeout >= 60*10) {
-      $timeout += rand (60*5);
-    } elsif ($timeout >= 60) {
-      $timeout += rand 30;
-    }
-    $worker_timer = AE::timer $timeout, 0, sub {
-      $wp->log ("|seconds_per_worker| elapsed ($timeout)");
-      $shutdown->();
-    };
-  }
-
   $cv->recv; # main loop
   undef $shutdown_timer;
 
@@ -119,7 +117,6 @@ sub accept_next ($$) {
   my ($self, $s_fh) = @_;
 
   return (undef, undef) unless defined $self->{server_ws};
-warn "accept";
   my $peer = accept (my $fh, $s_fh);
   return (undef, undef) unless $peer;
 
