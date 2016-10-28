@@ -101,12 +101,9 @@ sub main {
     };
   } # $fh
 
+  my $p = Promise->from_cv ($cv);
   if (length $wp->{worker_background_class}) {
-    $cv->begin;
-    promised_cleanup {
-      $cv->end;
-      ## Rejection will be reported to stderr by Promise.
-    } Promise->resolve->then (sub {
+    my $q = Promise->resolve->then (sub {
       return $wp->{worker_background_class}->start;
     })->then (sub {
       my $obj = $_[0]; # should be an object but might not ...
@@ -124,10 +121,13 @@ sub main {
         return $obj->completed;
       })->then (sub { $ok->() }, sub { $ng->($_[0]) });
       return $p;
+    })->catch (sub {
+      warn $_[0]; # XXX report to main process
     });
+    $p = $p->then (sub { return $q });
   }
 
-  $cv->recv; # main loop
+  $p->to_cv->recv; # main loop
   undef $shutdown_timer;
 
   $wp->log ("Worker completed");
