@@ -74,13 +74,6 @@ test {
     },
   )->then (sub {
     $server = $_[0];
-
-return promised_sleep (3);
-})->then(sub {
-warn 444;
-system "ls", $temp_path->parent;
-warn 666;
-
     return Promise->all ([
       $client1->request (path => []),
     ])->then (sub {

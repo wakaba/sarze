@@ -4,16 +4,19 @@ use warnings;
 use AnyEvent;
 use AnyEvent::Handle;
 use Promise;
+use Promised::Flow;
 use Web::Transport::PSGIServerConnection;
 
 sub main {
   my $wp = bless {shutdown_timeout => 10,
+                  shutdown_worker_background => sub { },
                   id => $$,
                   n => 0,
                   server_ws => []}, 'Sarze::Worker::Process';
   $wp->{parent_fh} = shift;
   $wp->{connections_per_worker} = shift;
   $wp->{seconds_per_worker} = shift;
+  $wp->{worker_background_class} = shift;
   $wp->{server_fhs} = [@_];
 
   my $cv = AE::cv;
@@ -34,6 +37,7 @@ sub main {
       undef $shutdown_timer;
     };
     undef $worker_timer;
+    $wp->{shutdown_worker_background}->();
   }; # $shutdown
 
   for my $sig (qw(INT TERM QUIT)) {
@@ -88,14 +92,40 @@ sub main {
             ->new_from_app_and_ae_tcp_server_args
                 (\&main::psgi_app, $args, parent_id => $wp->{id});
         $wp->{connections}->{$con} = $con;
-        $con->completed->then (sub {
+        promised_cleanup {
           $wp->log (sprintf "Connection completed (%s)", $con->id);
           $cv->end;
           delete $wp->{connections}->{$con};
-        });
+        } $con->completed;
       }
     };
   } # $fh
+
+  if (length $wp->{worker_background_class}) {
+    $cv->begin;
+    promised_cleanup {
+      $cv->end;
+      ## Rejection will be reported to stderr by Promise.
+    } Promise->resolve->then (sub {
+      return $wp->{worker_background_class}->start;
+    })->then (sub {
+      my $obj = $_[0]; # should be an object but might not ...
+      my ($ok, $ng);
+      my $p = Promise->new (sub { ($ok, $ng) = @_ });
+      $wp->{shutdown_worker_background} = sub {
+        $wp->{shutdown_worker_background} = sub { };
+        Promise->resolve->then (sub {
+          return $obj->stop; # might return any value or throw
+        })->catch (sub {
+          $ng->($_[0]);
+        });
+      };
+      Promise->resolve->then (sub {
+        return $obj->completed;
+      })->then (sub { $ok->() }, sub { $ng->($_[0]) });
+      return $p;
+    });
+  }
 
   $cv->recv; # main loop
   undef $shutdown_timer;

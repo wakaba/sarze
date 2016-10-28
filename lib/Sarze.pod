@@ -34,6 +34,23 @@ host/port pair must be either a pair of IP address and port (for TCP
 socket) or a pair of string C<unix/> and path to the file (for UNIX
 domain socket).
 
+worker_background_class => $class
+
+XXX
+
+$promise = $class->start
+
+XXX
+Promise must be resolved with an object that is XXX
+
+$object->stop
+
+XXX
+
+This method is invoked when the worker process is to be stopped.
+
+$promise = $object->completed
+
 XXX
 
 =head1 AUTHOR

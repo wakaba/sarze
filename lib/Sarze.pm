@@ -1,6 +1,7 @@
 package Sarze;
 use strict;
 use warnings;
+our $VERSION = '1.0';
 use AnyEvent::Socket;
 use AnyEvent::Handle;
 use AnyEvent::Fork;
@@ -152,6 +153,7 @@ sub start ($%) {
   }
   $forker->send_arg ($args{connections_per_worker} || 1000);
   $forker->send_arg ($args{seconds_per_worker} || 60*10);
+  $forker->send_arg (defined $args{worker_background_class} ? $args{worker_background_class} : '');
   my @fh;
   my @rstate;
   for (@{$args{hostports}}) {
