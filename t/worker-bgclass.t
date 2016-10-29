@@ -369,8 +369,13 @@ test {
     })->then (sub {
       my ($res2) = $_[0];
       test {
-        is $res2->status, 200;
-        isnt $res2->body_bytes, $p1, "As termination of background process terminates the worker, the connection can't be reused";
+        if ($res2->is_network_error) { # Mac OS X
+          ok $res2->is_reset_error;
+          ok 1;
+        } else {
+          is $res2->status, 200;
+          isnt $res2->body_bytes, $p1, "As termination of background process terminates the worker, the connection can't be reused";
+        }
       } $c;
     });
   })->then (sub {
