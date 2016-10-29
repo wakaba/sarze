@@ -2,6 +2,7 @@ package Sarze;
 use strict;
 use warnings;
 our $VERSION = '1.0';
+use Carp;
 use AnyEvent::Socket;
 use AnyEvent::Handle;
 use AnyEvent::Fork;
@@ -139,7 +140,13 @@ sub start ($%) {
     use AnyEvent;
     $SIG{CHLD} = 'IGNORE';
   })->require ('Sarze::Worker');
-  $forker->eval ($args{eval}) if defined $args{eval};
+  if (defined $args{eval}) {
+    my $c = sub { scalar Carp::caller_info
+        (Carp::short_error_loc() || Carp::long_error_loc()) }->();
+    $c->{file} =~ tr/\x0D\x0A"/   /;
+    my $line = sprintf qq{\n#line %d "Sarze eval (%s)"\n}, $c->{line}, $c->{file};
+    $forker->eval ($line.$args{eval});
+  }
   if (defined $args{psgi_file_name}) {
     my $name = quotemeta $args{psgi_file_name};
     $forker->eval (q<

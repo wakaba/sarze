@@ -57,6 +57,10 @@ $promise = $object->completed
 
 XXX
 
+The completed promise should be resolved when the background process
+has been stopped.  When the completed promise is resolved or rejected,
+the entire worker process is to be stopped.
+
 =head1 AUTHOR
 
 Wakaba <wakaba@suikawiki.org>.

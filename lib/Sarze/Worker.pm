@@ -123,7 +123,7 @@ sub main {
       return $p;
     })->catch (sub {
       warn $_[0]; # XXX report to main process
-    });
+    })->then ($shutdown);
     $p = $p->then (sub { return $q });
   }
 

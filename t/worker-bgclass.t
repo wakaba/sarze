@@ -320,6 +320,79 @@ test {
   });
 } n => 2, name => 'thrown by start';
 
+test {
+  my $c = shift;
+  my $host = '127.0.0.1';
+  my $port1 = find_listenable_port;
+
+  my $url1 = Web::URL->parse_string (qq<http://$host:$port1>);
+  my $client1 = Web::Transport::ConnectionClient->new_from_url ($url1);
+
+  my $server;
+  promised_cleanup {
+    return Promise->all ([
+      (defined $server ? $server->stop : undef),
+      $client1->close,
+    ])->then (sub { done $c; undef $c });
+  } Sarze->start (
+    hostports => [
+      [$host, $port1],
+    ],
+    worker_background_class => 'Worker',
+    eval => q{
+      my $Stop;
+
+      sub main::psgi_app {
+        $Stop->() if defined $Stop;
+        return [200, [], [$$]];
+      }
+
+      package Worker;
+      use Promise;
+      use Promised::Flow;
+      sub start {
+        my $p = Promise->new (sub { $Stop = $_[0] });
+        return Promise->resolve (bless {
+          completed => $p,
+        }, $_[0]);
+      }
+      sub stop {
+        $Stop->();
+      }
+      sub completed {
+        $_[0]->{completed};
+      }
+
+      sub DESTROY ($) {
+        undef $Stop;
+        local $@;
+        eval { die };
+        warn "Reference to @{[ref $_[0]]} is not discarded before global destruction\n"
+            if $@ =~ /during global destruction/;
+      } # DESTROY
+    },
+  )->then (sub {
+    $server = $_[0];
+    my $p1;
+    return $client1->request (path => [])->then (sub {
+      my ($res1) = $_[0];
+      test {
+        is $res1->status, 200;
+        $p1 = $res1->body_bytes;
+      } $c;
+      return $client1->request (path => []);
+    })->then (sub {
+      my ($res2) = $_[0];
+      test {
+        is $res2->status, 200;
+        isnt $res2->body_bytes, $p1, "As termination of background process terminates the worker, the connection can't be reused";
+      } $c;
+    });
+  })->then (sub {
+    return $server->stop;
+  });
+} n => 3, name => 'early termination';
+
 run_tests;
 
 =head1 LICENSE
