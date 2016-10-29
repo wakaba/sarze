@@ -255,8 +255,6 @@ test {
   my $url1 = Web::URL->parse_string (qq<http://$host:$port1>);
   my $client1 = Web::Transport::ConnectionClient->new_from_url ($url1);
 
-  my $temp_path = get_temp_file_path;
-
   my $server;
   promised_cleanup {
     return Promise->all ([
@@ -269,13 +267,7 @@ test {
     ],
     worker_background_class => 'Worker',
     eval => q{
-      my $TempFile;
-
       sub main::psgi_app {
-        my $temp_name = $_[0]->{HTTP_TEMP_FILE_NAME};
-        if (defined $temp_name) {
-          open $TempFile, '>', $temp_name or die "$temp_name: $!";
-        }
         return [200, [], ['body']];
       }
 
@@ -302,23 +294,16 @@ test {
     },
   )->then (sub {
     $server = $_[0];
-    return Promise->all ([
-      $client1->request (path => [], headers => {
-        "temp-file-name" => $temp_path,
-      }),
-    ])->then (sub {
-      my ($res1) = @{$_[0]};
+    $client1->last_resort_timeout (2);
+    return $client1->request (path => [])->then (sub {
+      my ($res1) = $_[0];
       test {
-        is $res1->body_bytes, "body";
+        ok $res1->is_network_error;
       } $c;
       return $server->stop;
-    })->then (sub {
-      test {
-        is $temp_path->slurp, "";
-      } $c;
     });
   });
-} n => 2, name => 'thrown by start';
+} n => 1, name => 'thrown by start';
 
 test {
   my $c = shift;
