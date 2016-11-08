@@ -8,14 +8,14 @@ use Promised::Flow;
 use Web::Transport::PSGIServerConnection;
 
 sub main {
-  my $wp = bless {shutdown_timeout => 10,
-                  shutdown_worker_background => sub { },
+  my $wp = bless {shutdown_worker_background => sub { },
                   id => $$,
                   n => 0,
                   server_ws => []}, 'Sarze::Worker::Process';
   $wp->{parent_fh} = shift;
   $wp->{connections_per_worker} = shift;
   $wp->{seconds_per_worker} = shift;
+  $wp->{shutdown_timeout} = shift;
   $wp->{worker_background_class} = shift;
   $wp->{server_fhs} = [@_];
 

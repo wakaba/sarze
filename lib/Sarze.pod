@@ -42,6 +42,19 @@ worker_background_class => $class
 
 XXX
 
+seconds_per_worker => $seconds (default: 60*10)
+
+After the seconds specified by this option has elapsed, a worker is
+switched to the shutdowning mode, where no incoming request is
+accepted anymore and any running handlers are expected to be stopped
+as far as possible.
+
+shutdown_timeout => $seconds (default: 60*1)
+
+After the seconds specified by this option has elapsed from it was
+switched to the shutdowning mode, a worker is uncleanly terminated
+even when there is a running handler.
+
 $promise = $class->start
 
 XXX

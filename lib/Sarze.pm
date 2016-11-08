@@ -160,6 +160,7 @@ sub start ($%) {
   }
   $forker->send_arg ($args{connections_per_worker} || 1000);
   $forker->send_arg ($args{seconds_per_worker} || 60*10);
+  $forker->send_arg ($args{shutdown_timeout} || 60*1);
   $forker->send_arg (defined $args{worker_background_class} ? $args{worker_background_class} : '');
   my @fh;
   my @rstate;
