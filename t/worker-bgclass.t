@@ -134,6 +134,7 @@ test {
         print $TempFile "stop\n" if defined $TempFile;
         promised_sleep (1)->then (sub {
           print $TempFile "stop sleeped\n" if defined $TempFile;
+          close $TempFile if defined $TempFile;
           $done->("stop");
         });
       }
