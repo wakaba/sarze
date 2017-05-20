@@ -2,7 +2,17 @@
 
 Sarze - An HTTP server
 
-=head1 XXX
+=head1 SYNOPSIS
+
+XXX
+
+=head1 DESCRIPTION
+
+XXX
+
+=head1 METHODS
+
+There are following methods:
 
 XXX
 
