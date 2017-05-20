@@ -13,10 +13,8 @@ sub main {
                   n => 0,
                   server_ws => []}, 'Sarze::Worker::Process';
   $wp->{parent_fh} = shift;
-  $wp->{connections_per_worker} = shift;
-  $wp->{seconds_per_worker} = shift;
-  $wp->{shutdown_timeout} = shift;
-  $wp->{worker_background_class} = shift;
+  my $options = eval shift; die $@ if $@;
+  $wp->{$_} = $options->{$_} for keys %$options;
   $wp->{server_fhs} = [@_];
 
   my $cv = AE::cv;
@@ -91,6 +89,8 @@ sub main {
         my $con = Web::Transport::PSGIServerConnection
             ->new_from_app_and_ae_tcp_server_args
                 (\&main::psgi_app, $args, parent_id => $wp->{id});
+        $con->max_request_body_length ($wp->{max_request_body_length})
+            if defined $wp->{max_request_body_length};
         $wp->{connections}->{$con} = $con;
         promised_cleanup {
           $wp->log (sprintf "Connection completed (%s)", $con->id);

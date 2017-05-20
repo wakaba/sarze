@@ -30,34 +30,6 @@ XXX
 $p = $server->completed
 
 XXX
-
-hostports => [[$host, $port], ...]
-
-An array reference of zero or more host/port pair array references.  A
-host/port pair must be either a pair of IP address and port (for TCP
-socket) or a pair of string C<unix/> and path to the file (for UNIX
-domain socket).
-
-worker_background_class => $class
-
-XXX
-
-seconds_per_worker => $seconds (default: 60*10)
-
-After the seconds specified by this option has elapsed, a worker is
-switched to the shutdowning mode, where no incoming request is
-accepted anymore and any running handlers are expected to be stopped
-as far as possible.
-
-shutdown_timeout => $seconds (default: 60*1)
-
-After the seconds specified by this option has elapsed from it was
-switched to the shutdowning mode, a worker is uncleanly terminated
-even when there is a running handler.
-
-$promise = $class->start
-
-XXX
 Promise must be resolved with an object that is XXX
 
 $object->stop
@@ -74,13 +46,61 @@ The completed promise should be resolved when the background process
 has been stopped.  When the completed promise is resolved or rejected,
 the entire worker process is to be stopped.
 
+=head1 OPTIONS
+
+Following options can be specified to C<start> and C<run> methods:
+
+=over 4
+
+=item hostports => [[$host, $port], ...]
+
+An array reference of zero or more host/port pair array references.  A
+host/port pair must be either a pair of IP address and port (for TCP
+socket) or a pair of string C<unix/> and path to the file (for UNIX
+domain socket).
+
+=item psgi_file_name
+
+XXX
+
+=item eval
+
+XXX
+
+=item worker_background_class => $class
+
+XXX
+
+=item max_worker_count
+
+XXX
+
+=item connections_per_worker
+
+XXX
+
+=item seconds_per_worker => $seconds (default: 60*10)
+
+After the seconds specified by this option has elapsed, a worker is
+switched to the shutdowning mode, where no incoming request is
+accepted anymore and any running handlers are expected to be stopped
+as far as possible.
+
+=item shutdown_timeout => $seconds (default: 60*1)
+
+After the seconds specified by this option has elapsed from it was
+switched to the shutdowning mode, a worker is uncleanly terminated
+even when there is a running handler.
+
+=back
+
 =head1 AUTHOR
 
 Wakaba <wakaba@suikawiki.org>.
 
 =head1 LICENSE
 
-Copyright 2016 Wakaba <wakaba@suikawiki.org>.
+Copyright 2016-2017 Wakaba <wakaba@suikawiki.org>.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

@@ -3,6 +3,7 @@ use strict;
 use warnings;
 our $VERSION = '1.0';
 use Carp;
+use Data::Dumper;
 use AnyEvent::Socket;
 use AnyEvent::Handle;
 use AnyEvent::Fork;
@@ -158,10 +159,15 @@ sub start ($%) {
       *main::psgi_app = $code;
     >);
   }
-  $forker->send_arg ($args{connections_per_worker} || 1000);
-  $forker->send_arg ($args{seconds_per_worker} || 60*10);
-  $forker->send_arg ($args{shutdown_timeout} || 60*1);
-  $forker->send_arg (defined $args{worker_background_class} ? $args{worker_background_class} : '');
+  my $options = Dumper {
+    connections_per_worker => $args{connections_per_worker} || 1000,
+    seconds_per_worker => $args{seconds_per_worker} || 60*10,
+    shutdown_timeout => $args{shutdown_timeout} || 60*1,
+    worker_background_class => defined $args{worker_background_class} ? $args{worker_background_class} : '',
+    max_request_body_length => $args{max_request_body_length},
+  };
+  $options =~ s/^\$VAR1 = //;
+  $forker->send_arg ($options);
   my @fh;
   my @rstate;
   for (@{$args{hostports}}) {
@@ -208,7 +214,7 @@ n"
 
 =head1 LICENSE
 
-Copyright 2016 Wakaba <wakaba@suikawiki.org>.
+Copyright 2016-2017 Wakaba <wakaba@suikawiki.org>.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

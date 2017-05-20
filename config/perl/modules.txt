@@ -1,3 +1,4 @@
 AnyEvent::Fork
 AnyEvent::Socket
 Carp
+Data::Dumper
