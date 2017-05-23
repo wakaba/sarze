@@ -1,8 +1,9 @@
 AnyEvent~7.13
 AnyEvent::Fork~1.31
-AnyEvent::Handle
+AnyEvent::Socket
 Canary::Stability~2012
 Carp~1.38
+Data::Dumper~2.161
 Digest::SHA~5.96
 Filter::Util::Call~1.57
 IO::FDPass~1.2
