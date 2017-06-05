@@ -160,8 +160,15 @@ sub start ($%) {
     my $c = sub { scalar Carp::caller_info
         (Carp::short_error_loc() || Carp::long_error_loc()) }->();
     $c->{file} =~ tr/\x0D\x0A"/   /;
-    my $line = sprintf qq{\n#line %d "Sarze eval (%s)"\n}, $c->{line}, $c->{file};
-    $forker->eval ($line.$args{eval});
+    my $line = sprintf qq{\n#line 1 "Sarze eval (%s line %d)"\n}, $c->{file}, $c->{line};
+    $forker->eval (sprintf q{
+      eval "%s";
+      if ($@) {
+        $Sarze::Worker::LoadError = "$@";
+      } elsif (not defined &main::psgi_app) {
+        $Sarze::Worker::LoadError = "%s does not define &main::psgi_app";
+      }
+    }, quotemeta ($line.$args{eval}), quotemeta sprintf "Sarze eval (%s line %d)", $c->{file}, $c->{line});
   }
   if (defined $args{psgi_file_name}) {
     require Cwd;

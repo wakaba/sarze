@@ -81,6 +81,10 @@ C<run> method is to be rejected with an error.
 
 XXX
 
+If the code throws, or if the code does not define the
+C<&main::psgi_app>, the promise returned by the C<start> or C<run>
+method is to be rejected with an error.
+
 =item worker_background_class => $class
 
 XXX
