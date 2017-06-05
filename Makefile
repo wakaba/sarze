@@ -40,6 +40,6 @@ test: test-deps test-main
 test-deps: deps
 
 test-main:
-	$(PROVE) t/*.t
+	TEST_MAX_CONCUR=1 WEBSERVER_DEBUG=2 $(PROVE) t/*.t
 
 ## License: Public Domain.
