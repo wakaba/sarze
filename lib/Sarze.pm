@@ -114,7 +114,7 @@ sub _create_workers_if_necessary ($$) {
     });
     $count++;
   }
-  return Promise->all ($p);
+  return Promise->all ($p) if defined wantarray;
 } # _create_workers_if_necessary
 
 sub start ($%) {
@@ -228,12 +228,13 @@ sub start ($%) {
       return Promise->reject ($error);
     }
   }
+  my $p = $self->_create_workers_if_necessary (\@fh);
   $self->{completed} = Promise->from_cv ($self->{global_cv})->then (sub {
     delete $self->{timer};
     @rstate = ();
     $self->log ("Main completed");
   });
-  return $self->_create_workers_if_necessary (\@fh)->then (sub {
+  return $p->then (sub {
     return $self;
   });
 } # start
