@@ -35,7 +35,7 @@ sub _create_worker ($$$) {
       delete $worker->{accepting};
       $onstop->();
     }
-    $start_ng->("Aborted before start of child");
+    $start_ng->($self->{globalfatalerror} || "Aborted before start of child");
   }; # $onnomore
 
   my $completed;
@@ -56,9 +56,10 @@ sub _create_worker ($$$) {
              } elsif ($line eq 'started') {
                $start_ok->();
              } elsif ($line =~ /\Aglobalfatalerror (.*)\z/s) {
-               my $error = decode_web_utf8 $1;
-               $self->log ("Fatal error: $error");
-               $start_ng->("Fatal error: $error");
+               my $error = "Fatal error: " . decode_web_utf8 $1;
+               $self->{globalfatalerror} ||= $error;
+               $self->log ($error);
+               $start_ng->($error);
                $self->{shutdown}->();
              } else {
                $self->log ("Broken command from worker process: |$line|");
