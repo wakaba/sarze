@@ -47,7 +47,7 @@ test {
   my $url1 = Web::URL->parse_string (qq<http://$host:$port1>);
   my $client1 = Web::Transport::ConnectionClient->new_from_url ($url1);
 
-  my $file_name = "notfound-" . rand . ".psgi";
+  my $file_name = "notfound-" . rand () . ".psgi";
   my $server;
   promised_cleanup {
     return Promise->all ([
