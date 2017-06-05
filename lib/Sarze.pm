@@ -180,12 +180,18 @@ sub start ($%) {
       my $code = do $name;
       if ($@) {
         $Sarze::Worker::LoadError = "$name: $@";
-      } elsif ($!) {
-        $Sarze::Worker::LoadError = "$name: $!";
-      } elsif (defined $code and ref $code eq 'CODE') {
-        *main::psgi_app = $code;
+      } elsif (defined $code) {
+        if (ref $code eq 'CODE') {
+          *main::psgi_app = $code;
+        } else {
+          $Sarze::Worker::LoadError = "|$name| does not return a CODE";
+        }
       } else {
-        $Sarze::Worker::LoadError = "|$name| does not return a CODE";
+        if ($!) {
+          $Sarze::Worker::LoadError = "$name: $!";
+        } else {
+          $Sarze::Worker::LoadError = "|$name| does not return a CODE";
+        }
       }
     >);
   }
