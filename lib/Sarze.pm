@@ -35,7 +35,7 @@ sub _create_worker ($$$) {
       delete $worker->{accepting};
       $onstop->();
     }
-#    $start_ng->($self->{globalfatalerror} || "Aborted before start of child"); # XXX
+    $start_ng->($self->{globalfatalerror} || "Aborted before start of child");
   }; # $onnomore
 
   my $completed;
