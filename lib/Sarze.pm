@@ -200,11 +200,22 @@ sub start ($%) {
   my @rstate;
   for (@{$args{hostports}}) {
     my ($h, $p) = @$_;
-    AnyEvent::Socket::_tcp_bind ($h, $p, sub { # tcp_bind can't be used for unix domain socket :-<
-      push @rstate, shift;
-      $self->log ("Main bound: $h:$p");
-      push @fh, $rstate[-1]->{fh};
-    });
+    local $Carp::CarpLevel = $Carp::CarpLevel + 1;
+    eval {
+      AnyEvent::Socket::_tcp_bind ($h, $p, sub { # tcp_bind can't be used for unix domain socket :-<
+        push @rstate, shift;
+        $self->log ("Main bound: $h:$p");
+        push @fh, $rstate[-1]->{fh};
+      });
+    };
+    if ($@) {
+      $self->{shutdown}->();
+      delete $self->{timer};
+      @rstate = ();
+      my $error = "$@";
+      $self->log ($error);
+      return Promise->reject ($error);
+    }
   }
   $self->{completed} = Promise->from_cv ($self->{global_cv})->then (sub {
     delete $self->{timer};
@@ -234,7 +245,7 @@ sub run ($@) {
 sub DESTROY ($) {
   local $@;
   eval { die };
-  warn "Reference to @{[ref $_[0]]} is not discarded before global destruction\
+  warn "Reference to @{[ref $_[0]]} ($_[0]->{id}) is not discarded before global destruction\
 n"
       if $@ =~ /during global destruction/;
 } # DESTROY
