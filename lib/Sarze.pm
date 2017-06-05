@@ -27,18 +27,19 @@ sub _create_worker ($$$) {
     $fork->send_fh ($fh);
   }
 
+  my ($start_ok, $start_ng) = @_;
+  my $start_p = Promise->new (sub { ($start_ok, $start_ng) = @_ });
+
   my $onnomore = sub {
     if ($worker->{accepting}) {
       delete $worker->{accepting};
       $onstop->();
     }
+    $start_ng->("Aborted before start of child");
   }; # $onnomore
 
   my $completed;
   my $complete_p = Promise->new (sub { $completed = $_[0] });
-
-  my ($start_ok, $start_ng) = @_;
-  my $start_p = Promise->new (sub { ($start_ok, $start_ng) = @_ });
 
   $fork->run ('Sarze::Worker::main', sub {
     my $fh = shift;
