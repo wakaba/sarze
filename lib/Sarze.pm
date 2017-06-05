@@ -175,7 +175,6 @@ sub start ($%) {
     require Cwd;
     my $name = quotemeta Cwd::abs_path ($args{psgi_file_name});
     $forker->eval (q<
-      local $! = undef;
       my $name = ">.$name.q<";
       my $code = do $name;
       if ($@) {
