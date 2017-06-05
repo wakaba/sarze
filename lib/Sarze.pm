@@ -149,7 +149,8 @@ sub start ($%) {
     $forker->eval ($line.$args{eval});
   }
   if (defined $args{psgi_file_name}) {
-    my $name = quotemeta $args{psgi_file_name};
+    require Cwd;
+    my $name = quotemeta Cwd::abs_path ($args{psgi_file_name});
     $forker->eval (q<
       my $code = do ">.$name.q<";
       die $@ if $@;
