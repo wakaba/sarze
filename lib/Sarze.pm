@@ -48,6 +48,7 @@ sub _create_worker ($$$) {
         (fh => $fh,
          on_read => sub {
            $rbuf .= $_[0]->{rbuf};
+warn "[[$self->{id} $rbuf]]";
            $_[0]->{rbuf} = '';
            while ($rbuf =~ s/^([^\x0A]*)\x0A//) {
              my $line = $1;
@@ -68,12 +69,14 @@ sub _create_worker ($$$) {
          },
          on_error => sub {
            $_[0]->destroy;
+warn "[[$self->{id} onerror $_[2]]]";
            $onnomore->();
            $completed->();
            undef $hdl;
          },
          on_eof => sub {
            $_[0]->destroy;
+warn "[[$self->{id} oneof $_[2]]]";
            $onnomore->();
            $completed->();
            undef $hdl;
