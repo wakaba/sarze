@@ -8,10 +8,11 @@ use AnyEvent::Socket;
 use AnyEvent::Handle;
 use AnyEvent::Fork;
 use Promise;
+use Web::Encoding;
 use constant DEBUG => $ENV{WEBSERVER_DEBUG} || 0;
 
 sub log ($$) {
-  warn sprintf "%s: %s [%s]\n",
+  warn encode_web_utf8 sprintf "%s: %s [%s]\n",
       $_[0]->{id}, $_[1], scalar gmtime time if DEBUG;
 } # log
 
@@ -36,6 +37,9 @@ sub _create_worker ($$$) {
   my $completed;
   my $complete_p = Promise->new (sub { $completed = $_[0] });
 
+  my ($start_ok, $start_ng) = @_;
+  my $start_p = Promise->new (sub { ($start_ok, $start_ng) = @_ });
+
   $fork->run ('Sarze::Worker::main', sub {
     my $fh = shift;
     my $rbuf = '';
@@ -46,8 +50,15 @@ sub _create_worker ($$$) {
            $_[0]->{rbuf} = '';
            while ($rbuf =~ s/^([^\x0A]*)\x0A//) {
              my $line = $1;
-             if ($line =~ /\Anomore\z/) {
+             if ($line eq 'nomore') {
                $onnomore->();
+             } elsif ($line eq 'started') {
+               $start_ok->();
+             } elsif ($line =~ /\Aglobalfatalerror (.*)\z/s) {
+               my $error = decode_web_utf8 $1;
+               $self->log ("Fatal error: $error");
+               $start_ng->("Fatal error: $error");
+               $self->{shutdown}->();
              } else {
                $self->log ("Broken command from worker process: |$line|");
              }
@@ -80,14 +91,17 @@ sub _create_worker ($$$) {
     undef $fork;
     $self->{global_cv}->end;
   });
+
+  return $start_p;
 } # _create_worker
 
 sub _create_workers_if_necessary ($$) {
   my ($self, $fhs) = @_;
+  my $p;
   my $count = 0;
   $count++ for grep { $_->{accepting} } values %{$self->{workers}};
   while ($count < $self->{max_worker_count} and not $self->{shutdowning}) {
-    $self->_create_worker ($fhs, sub {
+    $p ||= $self->_create_worker ($fhs, sub {
       $self->{timer} = AE::timer 1, 0, sub {
         $self->_create_workers_if_necessary ($fhs);
         delete $self->{timer};
@@ -95,6 +109,7 @@ sub _create_workers_if_necessary ($$) {
     });
     $count++;
   }
+  return $p; # returns result of one of workers
 } # _create_workers_if_necessary
 
 sub start ($%) {
@@ -152,12 +167,17 @@ sub start ($%) {
     require Cwd;
     my $name = quotemeta Cwd::abs_path ($args{psgi_file_name});
     $forker->eval (q<
-      my $code = do ">.$name.q<";
-      die $@ if $@;
-      unless (defined $code and ref $code eq 'CODE') {
-        die "|>.$name.q<| does not return a CODE";
+      my $name = ">.$name.q<";
+      my $code = do $name;
+      if ($@) {
+        $Sarze::Worker::LoadError = "$name: $@";
+      } elsif ($!) {
+        $Sarze::Worker::LoadError = "$name: $!";
+      } elsif (defined $code and ref $code eq 'CODE') {
+        *main::psgi_app = $code;
+      } else {
+        $Sarze::Worker::LoadError = "|$name| does not return a CODE";
       }
-      *main::psgi_app = $code;
     >);
   }
   my $options = Dumper {
@@ -179,13 +199,14 @@ sub start ($%) {
       push @fh, $rstate[-1]->{fh};
     });
   }
-  $self->_create_workers_if_necessary (\@fh);
   $self->{completed} = Promise->from_cv ($self->{global_cv})->then (sub {
     delete $self->{timer};
     @rstate = ();
     $self->log ("Main completed");
   });
-  return Promise->resolve ($self);
+  return $self->_create_workers_if_necessary (\@fh)->then (sub {
+    return $self;
+  });
 } # start
 
 sub stop ($) {

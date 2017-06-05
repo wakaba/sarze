@@ -73,6 +73,10 @@ domain socket).
 
 XXX
 
+If the PSGI script file C<psgi_file_name> is not found, or does not
+return a code reference, the promise returned by the C<start> or
+C<run> method is to be rejected with an error.
+
 =item eval
 
 XXX

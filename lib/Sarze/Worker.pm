@@ -5,9 +5,18 @@ use AnyEvent;
 use AnyEvent::Handle;
 use Promise;
 use Promised::Flow;
+use Web::Encoding;
 use Web::Transport::PSGIServerConnection;
 
 sub main {
+  if ($Sarze::Worker::LoadError) {
+    my $error = $Sarze::Worker::LoadError;
+    $error =~ s/\x0A/\\x0A/g;
+    print { $_[0] } encode_web_utf8 "globalfatalerror $$: $error\x0A";
+    close $_[0];
+    return;
+  }
+
   my $wp = bless {shutdown_worker_background => sub { },
                   id => $$,
                   n => 0,
@@ -126,6 +135,10 @@ sub main {
     })->then ($shutdown);
     $p = $p->then (sub { return $q });
   }
+
+  Promise->resolve->then (sub {
+    $wp->{parent_handle}->push_write ("started\x0A");
+  });
 
   $p->to_cv->recv; # main loop
   undef $shutdown_timer;
