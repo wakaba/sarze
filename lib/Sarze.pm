@@ -97,11 +97,11 @@ sub _create_worker ($$$) {
 
 sub _create_workers_if_necessary ($$) {
   my ($self, $fhs) = @_;
-  my $p;
+  my $p = [];
   my $count = 0;
   $count++ for grep { $_->{accepting} } values %{$self->{workers}};
   while ($count < $self->{max_worker_count} and not $self->{shutdowning}) {
-    $p ||= $self->_create_worker ($fhs, sub {
+    push @$p, $self->_create_worker ($fhs, sub {
       $self->{timer} = AE::timer 1, 0, sub {
         $self->_create_workers_if_necessary ($fhs);
         delete $self->{timer};
@@ -109,7 +109,7 @@ sub _create_workers_if_necessary ($$) {
     });
     $count++;
   }
-  return $p; # returns result of one of workers
+  return Promise->all ($p);
 } # _create_workers_if_necessary
 
 sub start ($%) {
