@@ -104,6 +104,12 @@ even when there is a running handler.
 
 =back
 
+=head1 DEPENDENCY
+
+The C<Sarze> module requires Perl 5.10 or later.
+
+It also requires modules L<AnyEvnet::Socket> and L<AnyEvent::Fork>.
+
 =head1 AUTHOR
 
 Wakaba <wakaba@suikawiki.org>.
