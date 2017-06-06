@@ -10,7 +10,8 @@ perl:
   - "5.10"
 before_install: git submodule update --init
 install: "make test-deps"
-script: "make test-main"
+script:
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then (make test-main || make test-main) ; else make test-main; fi
 notifications:
   email:
     - wakaba@suikawiki.org
