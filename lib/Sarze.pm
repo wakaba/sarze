@@ -18,7 +18,7 @@ sub log ($$) {
 
 sub _create_worker ($$$) {
   my ($self, $fhs, $onstop) = @_;
-  return if $self->{shutdowning};
+  return Promise->resolve (1) if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
   $fork->eval (q{srand});
@@ -35,7 +35,7 @@ sub _create_worker ($$$) {
       delete $worker->{accepting};
       $onstop->();
     }
-    $start_ng->($self->{globalfatalerror} || "Aborted before start of child");
+    $start_ok->(0);
   }; # $onnomore
 
   my $completed;
@@ -55,10 +55,9 @@ warn "$fork $_[0] [[$self->{id} $rbuf]]";
              if ($line eq 'nomore') {
                $onnomore->();
              } elsif ($line eq 'started') {
-               $start_ok->();
+               $start_ok->(1);
              } elsif ($line =~ /\Aglobalfatalerror (.*)\z/s) {
                my $error = "Fatal error: " . decode_web_utf8 $1;
-               $self->{globalfatalerror} ||= $error;
                $self->log ($error);
                $start_ng->($error);
                $self->{shutdown}->();
@@ -104,13 +103,21 @@ warn "$fork $_[0] [[$self->{id} send shutdown if $hdl]]";
   return $start_p;
 } # _create_worker
 
+sub _create_first_worker ($$) {
+  my ($self, $fhs) = @_;
+  ## First fork might be failed and $hdl above might receive on_eof
+  ## before receiving anything on Mac OS X...
+  return promised_wait_until {
+    return $self->_create_worker ($fhs, sub {});
+  } timeout => 60;
+} # _create_first_worker
+
 sub _create_workers_if_necessary ($$) {
   my ($self, $fhs) = @_;
-  my $p = [];
   my $count = 0;
   $count++ for grep { $_->{accepting} } values %{$self->{workers}};
   while ($count < $self->{max_worker_count} and not $self->{shutdowning}) {
-    push @$p, $self->_create_worker ($fhs, sub {
+    $self->_create_worker ($fhs, sub {
       $self->{timer} = AE::timer 1, 0, sub {
         $self->_create_workers_if_necessary ($fhs);
         delete $self->{timer};
@@ -118,7 +125,6 @@ sub _create_workers_if_necessary ($$) {
     });
     $count++;
   }
-  return Promise->all ($p) if defined wantarray;
 } # _create_workers_if_necessary
 
 sub start ($%) {
@@ -232,17 +238,15 @@ sub start ($%) {
       return Promise->reject ($error);
     }
   }
-  my $p = $self->_create_workers_if_necessary (\@fh);
+  my $p = $self->_create_first_worker (\@fh);
   $self->{completed} = Promise->from_cv ($self->{global_cv})->then (sub {
     delete $self->{timer};
     @rstate = ();
     $self->log ("Main completed");
   });
-
-# XXX
-return Promise->resolve ($self);
-
   return $p->then (sub {
+    return $self->_create_workers_if_necessary (\@fh);
+  })->then (sub {
     return $self;
   });
 } # start
