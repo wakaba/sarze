@@ -77,6 +77,8 @@ If the PSGI script file C<psgi_file_name> is not found, or does not
 return a code reference, the promise returned by the C<start> or
 C<run> method is to be rejected with an error.
 
+If this option is specified, the C<eval> option must not be specified.
+
 =item eval
 
 XXX
@@ -84,6 +86,9 @@ XXX
 If the code throws, or if the code does not define the
 C<&main::psgi_app>, the promise returned by the C<start> or C<run>
 method is to be rejected with an error.
+
+If this option is specified, the C<psgi_file_name> option must not be
+specified.
 
 =item worker_background_class => $class
 

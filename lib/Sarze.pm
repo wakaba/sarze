@@ -23,7 +23,7 @@ sub __create_check_worker ($) {
 
   my $fork = $self->{forker}->fork;
   $fork->eval (q{srand});
-  my $worker = $self->{workers}->{$fork} = {accepting => 0, shutdown => sub {}};
+  my $worker = $self->{workers}->{$fork} = {shutdown => sub {}};
 
   my ($start_ok, $start_ng) = @_;
   my $start_p = Promise->new (sub { ($start_ok, $start_ng) = @_ });
@@ -243,8 +243,7 @@ sub start ($%) {
         $Sarze::Worker::LoadError = "%s does not define &main::psgi_app";
       }
     }, quotemeta ($line.$args{eval}), quotemeta sprintf "Sarze eval (%s line %d)", $c->{file}, $c->{line});
-  }
-  if (defined $args{psgi_file_name}) {
+  } elsif (defined $args{psgi_file_name}) {
     require Cwd;
     my $name = quotemeta Cwd::abs_path ($args{psgi_file_name});
     $forker->eval (q<
@@ -275,7 +274,7 @@ sub start ($%) {
     max_request_body_length => $args{max_request_body_length},
   };
   $options =~ s/^\$VAR1 = /\$Sarze::Worker::Options = /;
-  $forker->eval ($options);
+  $forker->eval (encode_web_utf8 $options);
   my @fh;
   my @rstate;
   for (@{$args{hostports}}) {
@@ -304,8 +303,7 @@ sub start ($%) {
     $self->log ("Main completed");
   });
   return $p->then (sub {
-    return $self->_create_workers_if_necessary (\@fh);
-  })->then (sub {
+    $self->_create_workers_if_necessary (\@fh);
     return $self;
   });
 } # start
