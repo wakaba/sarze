@@ -234,6 +234,10 @@ sub start ($%) {
     @rstate = ();
     $self->log ("Main completed");
   });
+
+# XXX
+return Promise->resolve ($self);
+
   return $p->then (sub {
     return $self;
   });
