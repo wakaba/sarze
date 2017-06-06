@@ -231,6 +231,11 @@ sub start ($%) {
     $SIG{CHLD} = 'IGNORE';
   })->require ('Sarze::Worker');
   if (defined $args{eval}) {
+    if (defined $args{psgi_file_name}) {
+      $self->{shutdown}->();
+      return Promise->reject
+          ("Both |eval| and |psgi_file_name| options are specified");
+    }
     my $c = sub { scalar Carp::caller_info
         (Carp::short_error_loc() || Carp::long_error_loc()) }->();
     $c->{file} =~ tr/\x0D\x0A"/   /;
@@ -265,6 +270,10 @@ sub start ($%) {
         }
       }
     >);
+  } else {
+    $self->{shutdown}->();
+    return Promise->reject
+        ("Neither of |eval| and |psgi_file_name| options is specified");
   }
   my $options = Dumper {
     connections_per_worker => $args{connections_per_worker} || 1000,
