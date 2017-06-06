@@ -181,17 +181,37 @@ sub start ($%) {
     id => $$ . 'sarze' . ++$Sarze::N, # {id} can't contain \x0A
   }, $class;
 
+  my @rstate;
   $self->{global_cv}->begin;
   $self->{shutdown} = sub {
+    @rstate = ();
     $self->{global_cv}->end;
     $self->{shutdown} = sub { };
     for (values %{$self->{workers}}) {
       $_->{shutdown}->();
     }
+    delete $self->{timer};
     delete $self->{forker};
     delete $self->{signals};
     $self->{shutdowning}++;
   };
+
+  for (@{$args{hostports}}) {
+    my ($h, $p) = @$_;
+    local $Carp::CarpLevel = $Carp::CarpLevel + 1;
+    eval {
+      AnyEvent::Socket::_tcp_bind ($h, $p, sub { # tcp_bind can't be used for unix domain socket :-<
+        push @rstate, shift;
+        $self->log ("Main bound: $h:$p");
+      });
+    };
+    if ($@) {
+      $self->{shutdown}->();
+      my $error = "$@";
+      $self->log ($error);
+      return Promise->reject ($error);
+    }
+  }
 
   for my $sig (qw(INT TERM QUIT)) {
     $self->{signals}->{$sig} = AE::signal $sig => sub {
@@ -219,6 +239,7 @@ sub start ($%) {
   if (defined $args{eval}) {
     if (defined $args{psgi_file_name}) {
       $self->{shutdown}->();
+      $self->log ("Terminated by option error");
       return Promise->reject
           ("Both |eval| and |psgi_file_name| options are specified");
     }
@@ -258,6 +279,7 @@ sub start ($%) {
     >);
   } else {
     $self->{shutdown}->();
+    $self->log ("Terminated by option error");
     return Promise->reject
         ("Neither of |eval| and |psgi_file_name| options is specified");
   }
@@ -270,27 +292,7 @@ sub start ($%) {
   };
   $options =~ s/^\$VAR1 = /\$Sarze::Worker::Options = /;
   $forker->eval (encode_web_utf8 $options);
-  my @fh;
-  my @rstate;
-  for (@{$args{hostports}}) {
-    my ($h, $p) = @$_;
-    local $Carp::CarpLevel = $Carp::CarpLevel + 1;
-    eval {
-      AnyEvent::Socket::_tcp_bind ($h, $p, sub { # tcp_bind can't be used for unix domain socket :-<
-        push @rstate, shift;
-        $self->log ("Main bound: $h:$p");
-        push @fh, $rstate[-1]->{fh};
-      });
-    };
-    if ($@) {
-      $self->{shutdown}->();
-      delete $self->{timer};
-      @rstate = ();
-      my $error = "$@";
-      $self->log ($error);
-      return Promise->reject ($error);
-    }
-  }
+
   my $p = $self->_create_check_worker;
   $self->{completed} = Promise->from_cv ($self->{global_cv})->then (sub {
     delete $self->{timer};
@@ -298,9 +300,8 @@ sub start ($%) {
     $self->log ("Main completed");
   });
   return $p->then (sub {
-    return $self if $self->{shutdowning};
-    for my $fh (@fh) {
-      $forker->send_fh ($fh);
+    for (@rstate) {
+      $forker->send_fh ($_->{fh});
     }
     $self->_create_workers_if_necessary;
     return $self;
@@ -325,8 +326,7 @@ sub run ($@) {
 sub DESTROY ($) {
   local $@;
   eval { die };
-  warn "Reference to @{[ref $_[0]]} ($_[0]->{id}) is not discarded before global destruction\
-n"
+  warn "Reference to @{[ref $_[0]]} ($_[0]->{id}) is not discarded before global destruction"
       if $@ =~ /during global destruction/;
 } # DESTROY
 
