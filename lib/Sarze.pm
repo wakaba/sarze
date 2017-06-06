@@ -17,9 +17,89 @@ sub log ($$) {
       $_[0]->{id}, $_[1], scalar gmtime time if DEBUG;
 } # log
 
+sub __create_check_worker ($) {
+  my ($self) = @_;
+  return Promise->resolve (1) if $self->{shutdowning};
+
+  my $fork = $self->{forker}->fork;
+  $fork->eval (q{srand});
+  my $worker = $self->{workers}->{$fork} = {accepting => 0, shutdown => sub {}};
+
+  my ($start_ok, $start_ng) = @_;
+  my $start_p = Promise->new (sub { ($start_ok, $start_ng) = @_ });
+
+  my $onnomore = sub {
+    $start_ok->(0);
+  }; # $onnomore
+
+  my $completed;
+  my $complete_p = Promise->new (sub { $completed = $_[0] });
+
+  $fork->run ('Sarze::Worker::check', sub {
+    my $fh = shift;
+    my $rbuf = '';
+    my $hdl; $hdl = AnyEvent::Handle->new
+        (fh => $fh,
+         on_read => sub {
+           $rbuf .= $_[0]->{rbuf};
+warn "(chk) $fork $_[0] [[$self->{id} $rbuf]]";
+           $_[0]->{rbuf} = '';
+           while ($rbuf =~ s/^([^\x0A]*)\x0A//) {
+             my $line = $1;
+             if ($line eq 'started') {
+               $start_ok->(1);
+             } elsif ($line =~ /\Aglobalfatalerror (.*)\z/s) {
+               my $error = "Fatal error: " . decode_web_utf8 $1;
+               $self->log ($error);
+               $start_ng->($error);
+               $self->{shutdown}->();
+             } else {
+               my $error = "Broken command from worker process: |$line|";
+               $self->log ($error);
+               $start_ng->($error);
+               $self->{shutdown}->();
+             }
+           }
+         },
+         on_error => sub {
+           $_[0]->destroy;
+warn "(chk) $fork $_[0] [[$self->{id} onerror $_[2]]]";
+           $onnomore->();
+           $completed->();
+           undef $hdl;
+         },
+         on_eof => sub {
+           $_[0]->destroy;
+warn "(chk) $fork $_[0] [[$self->{id} oneof $_[2]]]";
+           $onnomore->();
+           $completed->();
+           undef $hdl;
+         });
+  });
+
+  $self->{global_cv}->begin;
+  $complete_p->then (sub {
+    delete $worker->{shutdown};
+    delete $self->{workers}->{$fork};
+    undef $fork;
+    $self->{global_cv}->end;
+  });
+
+  return $start_p;
+} # __create_check_worker
+
+sub _create_check_worker ($) {
+  my ($self) = @_;
+  ## First fork might be failed and $hdl above might receive on_eof
+  ## before receiving anything on Mac OS X...
+  return promised_wait_until {
+    return $self->__create_check_worker;
+  } timeout => 60;
+} # _create_check_worker
+
 sub _create_worker ($$$) {
   my ($self, $fhs, $onstop) = @_;
-  return Promise->resolve (1) if $self->{shutdowning};
+  return if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
   $fork->eval (q{srand});
@@ -28,15 +108,11 @@ sub _create_worker ($$$) {
     $fork->send_fh ($fh);
   }
 
-  my ($start_ok, $start_ng) = @_;
-  my $start_p = Promise->new (sub { ($start_ok, $start_ng) = @_ });
-
   my $onnomore = sub {
     if ($worker->{accepting}) {
       delete $worker->{accepting};
       $onstop->();
     }
-    $start_ok->(0);
   }; # $onnomore
 
   my $completed;
@@ -55,13 +131,6 @@ warn "$fork $_[0] [[$self->{id} $rbuf]]";
              my $line = $1;
              if ($line eq 'nomore') {
                $onnomore->();
-             } elsif ($line eq 'started') {
-               $start_ok->(1);
-             } elsif ($line =~ /\Aglobalfatalerror (.*)\z/s) {
-               my $error = "Fatal error: " . decode_web_utf8 $1;
-               $self->log ($error);
-               $start_ng->($error);
-               $self->{shutdown}->();
              } else {
                $self->log ("Broken command from worker process: |$line|");
              }
@@ -100,18 +169,7 @@ warn "$fork $_[0] [[$self->{id} send shutdown if $hdl]]";
     undef $fork;
     $self->{global_cv}->end;
   });
-
-  return $start_p;
 } # _create_worker
-
-sub _create_first_worker ($$) {
-  my ($self, $fhs) = @_;
-  ## First fork might be failed and $hdl above might receive on_eof
-  ## before receiving anything on Mac OS X...
-  return promised_wait_until {
-    return $self->_create_worker ($fhs, sub {});
-  } timeout => 60;
-} # _create_first_worker
 
 sub _create_workers_if_necessary ($$) {
   my ($self, $fhs) = @_;
@@ -239,7 +297,7 @@ sub start ($%) {
       return Promise->reject ($error);
     }
   }
-  my $p = $self->_create_first_worker (\@fh);
+  my $p = $self->_create_check_worker;
   $self->{completed} = Promise->from_cv ($self->{global_cv})->then (sub {
     delete $self->{timer};
     @rstate = ();

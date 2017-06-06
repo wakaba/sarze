@@ -8,16 +8,21 @@ use Promised::Flow;
 use Web::Encoding;
 use Web::Transport::PSGIServerConnection;
 
-sub main {
-warn "$$ worker main started";
+sub check {
   if ($Sarze::Worker::LoadError) {
-warn "$$ worker main has error";
+warn "$$ worker check has error";
     my $error = $Sarze::Worker::LoadError;
     $error =~ s/\x0A/\\x0A/g;
     print { $_[0] } encode_web_utf8 "globalfatalerror $$: $error\x0A";
-    #close $_[0];
-    return;
+  } else {
+warn "$$ worker check no error";
+    print { $_[0] } "started\x0A";
   }
+  close $_[0];
+} # check
+
+sub main {
+warn "$$ worker main started";
 
   my $wp = bless {shutdown_worker_background => sub { },
                   id => $$,
@@ -139,11 +144,6 @@ warn "worker $$ $wp->{id} $wp->{parent_handle}";
     })->then ($shutdown);
     $p = $p->then (sub { return $q });
   }
-
-  Promise->resolve->then (sub {
-warn "$wp->{parent_id} $wp->{parent_handle} started sent";
-    $wp->{parent_handle}->push_write ("started\x0A");
-  });
 
   $p->to_cv->recv; # main loop
   undef $shutdown_timer;
