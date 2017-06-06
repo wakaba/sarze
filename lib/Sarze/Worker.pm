@@ -155,9 +155,10 @@ warn "worker $$ $wp->{id} $wp->{parent_handle}";
 
 package Sarze::Worker::Process;
 use constant DEBUG => $ENV{WEBSERVER_DEBUG} || 0;
+use Web::Encoding;
 
 sub log ($$) {
-  warn sprintf "%s: %s [%s]\n",
+  warn encode_web_utf8 sprintf "%s: %s [%s]\n",
       $_[0]->{id}, $_[1], scalar gmtime time if DEBUG;
 } # log
 
