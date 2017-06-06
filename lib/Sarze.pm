@@ -82,10 +82,14 @@ warn "$fork $_[0] [[$self->{id} oneof $_[2]]]";
            undef $hdl;
          });
     if ($self->{shutdowning}) {
+warn "$fork $_[0] [[$self->{id} send shutdown]]";
       $hdl->push_write ("shutdown\x0A");
     } else {
+warn "$fork $_[0] [[$self->{id} send parent_id]]";
       $hdl->push_write ("parent_id $self->{id}\x0A");
-      $worker->{shutdown} = sub { $hdl->push_write ("shutdown\x0A") if $hdl };
+      $worker->{shutdown} = sub {
+warn "$fork $_[0] [[$self->{id} send shutdown if $hdl]]";
+ $hdl->push_write ("shutdown\x0A") if $hdl };
     }
   });
 

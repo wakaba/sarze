@@ -9,7 +9,9 @@ use Web::Encoding;
 use Web::Transport::PSGIServerConnection;
 
 sub main {
+warn "$$ worker main started";
   if ($Sarze::Worker::LoadError) {
+warn "$$ worker main has error";
     my $error = $Sarze::Worker::LoadError;
     $error =~ s/\x0A/\\x0A/g;
     print { $_[0] } encode_web_utf8 "globalfatalerror $$: $error\x0A";
@@ -33,6 +35,7 @@ sub main {
   my $worker_timer;
   my $shutdown_timer;
   my $shutdown = sub {
+warn "worker $wp->{id} shutdown";
     $wp->dont_accept_anymore;
     for (values %{$wp->{connections} or {}}) {
       $_->close_after_current_response;
@@ -84,6 +87,7 @@ sub main {
        },
        on_eof => sub { $_[0]->destroy },
        on_error => sub { $_[0]->destroy });
+warn "worker $$ $wp->{id} $wp->{parent_handle}";
 
   for my $fh (@{$wp->{server_fhs}}) {
     push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
@@ -137,6 +141,7 @@ sub main {
   }
 
   Promise->resolve->then (sub {
+warn "$wp->{parent_id} $wp->{parent_handle} started sent";
     $wp->{parent_handle}->push_write ("started\x0A");
   });
 
