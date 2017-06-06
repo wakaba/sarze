@@ -117,7 +117,12 @@ even when there is a running handler.
 
 =back
 
-The module first loads the server code (as specified by C<eval> or
+=head1 EXECUTION
+
+Sarze is a preforking HTTP server.  It creates worker processes which
+handle coming HTTP connections.
+
+Sarze first loads the server code (as specified by C<eval> or
 C<psgi_file_name> option) and then forks that as workers.  This means
 that any variable value initialized at loading is shared among the
 workers executed by a server.  For example,
@@ -136,7 +141,19 @@ workers executed by a server.  For example,
 
 The C<Sarze> module requires Perl 5.10 or later.
 
-It also requires modules L<AnyEvnet::Socket> and L<AnyEvent::Fork>.
+It requires modules L<AnyEvnet::Socket> and L<AnyEvent::Fork>.
+
+It also requires following Perl modules (submodules of this Git
+repository): <https://github.com/wakaba/perl-promise>,
+<https://github.com/manakai/perl-web-datetime>,
+<https://github.com/manakai/perl-web-encodings>,
+<https://github.com/manakai/perl-web-resource>, and
+<https://github.com/manakai/perl-web-url>.
+
+=head1 AVAILABILITY
+
+This module is available as a Git repository at
+<https://github.com/wakaba/sarze>.
 
 =head1 AUTHOR
 
