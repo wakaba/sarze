@@ -41,7 +41,6 @@ sub __create_check_worker ($) {
         (fh => $fh,
          on_read => sub {
            $rbuf .= $_[0]->{rbuf};
-warn "(chk) $fork $_[0] [[$self->{id} $rbuf]]";
            $_[0]->{rbuf} = '';
            while ($rbuf =~ s/^([^\x0A]*)\x0A//) {
              my $line = $1;
@@ -62,14 +61,12 @@ warn "(chk) $fork $_[0] [[$self->{id} $rbuf]]";
          },
          on_error => sub {
            $_[0]->destroy;
-warn "(chk) $fork $_[0] [[$self->{id} onerror $_[2]] <$rbuf>]";
            $onnomore->();
            $completed->();
            undef $hdl;
          },
          on_eof => sub {
            $_[0]->destroy;
-warn "(chk) $fork $_[0] [[$self->{id} oneof $_[2]] <$rbuf>]";
            $onnomore->();
            $completed->();
            undef $hdl;
@@ -120,7 +117,6 @@ sub _create_worker ($$) {
         (fh => $fh,
          on_read => sub {
            $rbuf .= $_[0]->{rbuf};
-warn "$fork $_[0] [[$self->{id} $rbuf]]";
            $_[0]->{rbuf} = '';
            while ($rbuf =~ s/^([^\x0A]*)\x0A//) {
              my $line = $1;
@@ -133,27 +129,21 @@ warn "$fork $_[0] [[$self->{id} $rbuf]]";
          },
          on_error => sub {
            $_[0]->destroy;
-warn "$fork $_[0] [[$self->{id} onerror $_[2]]<$rbuf>]";
            $onnomore->();
            $completed->();
            undef $hdl;
          },
          on_eof => sub {
            $_[0]->destroy;
-warn "$fork $_[0] [[$self->{id} oneof $_[2]]<$rbuf>]";
            $onnomore->();
            $completed->();
            undef $hdl;
          });
     if ($self->{shutdowning}) {
-warn "$fork $_[0] [[$self->{id} send shutdown]]";
       $hdl->push_write ("shutdown\x0A");
     } else {
-warn "$fork $_[0] [[$self->{id} send parent_id]]";
       $hdl->push_write ("parent_id $self->{id}\x0A");
-      $worker->{shutdown} = sub {
-warn "$fork $_[0] [[$self->{id} send shutdown if $hdl]]";
- $hdl->push_write ("shutdown\x0A") if $hdl };
+      $worker->{shutdown} = sub { $hdl->push_write ("shutdown\x0A") if $hdl };
     }
   });
 

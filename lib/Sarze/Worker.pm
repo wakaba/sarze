@@ -10,20 +10,16 @@ use Web::Transport::PSGIServerConnection;
 
 sub check {
   if ($Sarze::Worker::LoadError) {
-warn "$$ worker check has error";
     my $error = $Sarze::Worker::LoadError;
     $error =~ s/\x0A/\\x0A/g;
     print { $_[0] } encode_web_utf8 "globalfatalerror $$: $error\x0A";
   } else {
-warn "$$ worker check no error";
     print { $_[0] } "started\x0A";
   }
   close $_[0];
 } # check
 
 sub main {
-warn "$$ worker main started";
-
   srand;
   my $wp = bless {%{$Sarze::Worker::Options},
                   shutdown_worker_background => sub { },
@@ -40,7 +36,6 @@ warn "$$ worker main started";
   my $worker_timer;
   my $shutdown_timer;
   my $shutdown = sub {
-warn "worker $wp->{id} shutdown";
     $wp->dont_accept_anymore;
     for (values %{$wp->{connections} or {}}) {
       $_->close_after_current_response;
@@ -92,7 +87,6 @@ warn "worker $wp->{id} shutdown";
        },
        on_eof => sub { $_[0]->destroy },
        on_error => sub { $_[0]->destroy });
-warn "worker $$ $wp->{id} $wp->{parent_handle}";
 
   for my $fh (@{$wp->{server_fhs}}) {
     push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
@@ -208,7 +202,7 @@ sub DESTROY ($) {
 
 =head1 LICENSE
 
-Copyright 2016 Wakaba <wakaba@suikawiki.org>.
+Copyright 2016-2017 Wakaba <wakaba@suikawiki.org>.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
