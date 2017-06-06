@@ -15,7 +15,7 @@ warn "$$ worker main has error";
     my $error = $Sarze::Worker::LoadError;
     $error =~ s/\x0A/\\x0A/g;
     print { $_[0] } encode_web_utf8 "globalfatalerror $$: $error\x0A";
-    close $_[0];
+    #close $_[0];
     return;
   }
 
