@@ -16,8 +16,7 @@ matrix:
     os: osx
 before_install: git submodule update --init
 install: "make test-deps"
-script:
-  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then (make test-main || make test-main) ; else make test-main; fi
+script: "make test-main"
 notifications:
   email:
     - wakaba@suikawiki.org
