@@ -8,6 +8,7 @@ use AnyEvent::Socket;
 use AnyEvent::Handle;
 use AnyEvent::Fork;
 use Promise;
+use Promised::Flow;
 use Web::Encoding;
 use constant DEBUG => $ENV{WEBSERVER_DEBUG} || 0;
 
