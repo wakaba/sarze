@@ -211,7 +211,8 @@ test {
   }, sub {
     my $error = $_[0];
     test {
-      like $error, qr{\Qat @{[__FILE__]} line @{[__LINE__-18]}\E};
+      like $error, qr{\Qat @{[__FILE__]} line @{[__LINE__-18]}\E},
+          "duplicate listen error";
     } $c;
   })->then (sub {
     return $server->stop;

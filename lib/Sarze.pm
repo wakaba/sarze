@@ -62,14 +62,14 @@ warn "(chk) $fork $_[0] [[$self->{id} $rbuf]]";
          },
          on_error => sub {
            $_[0]->destroy;
-warn "(chk) $fork $_[0] [[$self->{id} onerror $_[2]]]";
+warn "(chk) $fork $_[0] [[$self->{id} onerror $_[2]] <$rbuf>]";
            $onnomore->();
            $completed->();
            undef $hdl;
          },
          on_eof => sub {
            $_[0]->destroy;
-warn "(chk) $fork $_[0] [[$self->{id} oneof $_[2]]]";
+warn "(chk) $fork $_[0] [[$self->{id} oneof $_[2]] <$rbuf>]";
            $onnomore->();
            $completed->();
            undef $hdl;
@@ -96,15 +96,12 @@ sub _create_check_worker ($) {
   } timeout => 60;
 } # _create_check_worker
 
-sub _create_worker ($$$) {
-  my ($self, $fhs, $onstop) = @_;
+sub _create_worker ($$) {
+  my ($self, $onstop) = @_;
   return if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
   my $worker = $self->{workers}->{$fork} = {accepting => 1, shutdown => sub {}};
-  for my $fh (@$fhs) {
-    $fork->send_fh ($fh);
-  }
 
   my $onnomore = sub {
     if ($worker->{accepting}) {
@@ -136,14 +133,14 @@ warn "$fork $_[0] [[$self->{id} $rbuf]]";
          },
          on_error => sub {
            $_[0]->destroy;
-warn "$fork $_[0] [[$self->{id} onerror $_[2]]]";
+warn "$fork $_[0] [[$self->{id} onerror $_[2]]<$rbuf>]";
            $onnomore->();
            $completed->();
            undef $hdl;
          },
          on_eof => sub {
            $_[0]->destroy;
-warn "$fork $_[0] [[$self->{id} oneof $_[2]]]";
+warn "$fork $_[0] [[$self->{id} oneof $_[2]]<$rbuf>]";
            $onnomore->();
            $completed->();
            undef $hdl;
@@ -169,14 +166,14 @@ warn "$fork $_[0] [[$self->{id} send shutdown if $hdl]]";
   });
 } # _create_worker
 
-sub _create_workers_if_necessary ($$) {
-  my ($self, $fhs) = @_;
+sub _create_workers_if_necessary ($) {
+  my ($self) = @_;
   my $count = 0;
   $count++ for grep { $_->{accepting} } values %{$self->{workers}};
   while ($count < $self->{max_worker_count} and not $self->{shutdowning}) {
-    $self->_create_worker ($fhs, sub {
+    $self->_create_worker (sub {
       $self->{timer} = AE::timer 1, 0, sub {
-        $self->_create_workers_if_necessary ($fhs);
+        $self->_create_workers_if_necessary;
         delete $self->{timer};
       };
     });
@@ -201,6 +198,7 @@ sub start ($%) {
     for (values %{$self->{workers}}) {
       $_->{shutdown}->();
     }
+    delete $self->{forker};
     delete $self->{signals};
     $self->{shutdowning}++;
   };
@@ -310,7 +308,11 @@ sub start ($%) {
     $self->log ("Main completed");
   });
   return $p->then (sub {
-    $self->_create_workers_if_necessary (\@fh);
+    return $self if $self->{shutdowning};
+    for my $fh (@fh) {
+      $forker->send_fh ($fh);
+    }
+    $self->_create_workers_if_necessary;
     return $self;
   });
 } # start
