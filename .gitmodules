@@ -22,3 +22,7 @@
 	path = t_deps/modules/test-x1
 	url = https://github.com/wakaba/perl-test-x1
 	track = master
+[submodule "t_deps/modules/promised-command"]
+	path = t_deps/modules/promised-command
+	url = https://github.com/wakaba/perl-promised-command
+	track = master

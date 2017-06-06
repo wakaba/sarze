@@ -137,6 +137,19 @@ workers executed by a server.  For example,
 
 ... always returns the same number.
 
+=head1 SIGNALS
+
+While the Sarze server is running, it receives signals.
+
+When it receives one of C<SIGINT>, C<SIGTERM>, or C<SIGQUIT>, it stops
+(as if the C<stop> method were invoked).
+
+It might not immediately terminate the server when it is still in the
+process of generating and sending a response.  Once it receives a
+signal, it uninstalls the signal handler.  By sending the second
+signal, which is processed by Perl's default handler, the entire
+application exits and Sarze's graceful termination process is aborted.
+
 =head1 DEPENDENCY
 
 The C<Sarze> module requires Perl 5.10 or later.

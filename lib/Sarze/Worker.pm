@@ -87,6 +87,7 @@ sub main {
        },
        on_eof => sub { $_[0]->destroy },
        on_error => sub { $_[0]->destroy });
+  # XXX should run $shutdown when connection is closed
 
   for my $fh (@{$wp->{server_fhs}}) {
     push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
