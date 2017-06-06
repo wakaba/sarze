@@ -117,6 +117,21 @@ even when there is a running handler.
 
 =back
 
+The module first loads the server code (as specified by C<eval> or
+C<psgi_file_name> option) and then forks that as workers.  This means
+that any variable value initialized at loading is shared among the
+workers executed by a server.  For example,
+
+  ## Bad example!
+  eval => q{
+    my $number = rand; ## This line is executed only once.
+    return sub {
+      return [200, [], [$number]];
+    };
+  },
+
+... always returns the same number.
+
 =head1 DEPENDENCY
 
 The C<Sarze> module requires Perl 5.10 or later.

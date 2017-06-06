@@ -24,6 +24,7 @@ warn "$$ worker check no error";
 sub main {
 warn "$$ worker main started";
 
+  srand;
   my $wp = bless {%{$Sarze::Worker::Options},
                   shutdown_worker_background => sub { },
                   id => $$,

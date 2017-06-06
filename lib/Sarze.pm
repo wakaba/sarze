@@ -22,7 +22,6 @@ sub __create_check_worker ($) {
   return Promise->resolve (1) if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
-  $fork->eval (q{srand});
   my $worker = $self->{workers}->{$fork} = {shutdown => sub {}};
 
   my ($start_ok, $start_ng) = @_;
@@ -102,7 +101,6 @@ sub _create_worker ($$$) {
   return if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
-  $fork->eval (q{srand});
   my $worker = $self->{workers}->{$fork} = {accepting => 1, shutdown => sub {}};
   for my $fh (@$fhs) {
     $fork->send_fh ($fh);
