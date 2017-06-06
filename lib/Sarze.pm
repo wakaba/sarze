@@ -17,6 +17,72 @@ sub log ($$) {
       $_[0]->{id}, $_[1], scalar gmtime time if DEBUG;
 } # log
 
+sub _init_forker ($$) {
+  my ($self, $args) = @_;
+  $self->{forker} = AnyEvent::Fork->new;
+  $self->{forker}->eval (q{
+    use AnyEvent;
+    $SIG{CHLD} = 'IGNORE';
+  })->require ('Sarze::Worker');
+  if (defined $args->{eval}) {
+    if (defined $args->{psgi_file_name}) {
+      $self->{shutdown}->();
+      $self->log ("Terminated by option error");
+      return Promise->reject
+          ("Both |eval| and |psgi_file_name| options are specified");
+    }
+    my $c = sub { scalar Carp::caller_info
+        (Carp::short_error_loc() || Carp::long_error_loc()) }->();
+    $c->{file} =~ tr/\x0D\x0A"/   /;
+    my $line = sprintf qq{\n#line 1 "Sarze eval (%s line %d)"\n}, $c->{file}, $c->{line};
+    $self->{forker}->eval (sprintf q{
+      eval "%s";
+      if ($@) {
+        $Sarze::Worker::LoadError = "$@";
+      } elsif (not defined &main::psgi_app) {
+        $Sarze::Worker::LoadError = "%s does not define &main::psgi_app";
+      }
+    }, quotemeta ($line.$args->{eval}), quotemeta sprintf "Sarze eval (%s line %d)", $c->{file}, $c->{line});
+  } elsif (defined $args->{psgi_file_name}) {
+    require Cwd;
+    my $name = quotemeta Cwd::abs_path ($args->{psgi_file_name});
+    $self->{forker}->eval (q<
+      my $name = ">.$name.q<";
+      my $code = do $name;
+      if ($@) {
+        $Sarze::Worker::LoadError = "$name: $@";
+      } elsif (defined $code) {
+        if (ref $code eq 'CODE') {
+          *main::psgi_app = $code;
+        } else {
+          $Sarze::Worker::LoadError = "|$name| does not return a CODE";
+        }
+      } else {
+        if ($!) {
+          $Sarze::Worker::LoadError = "$name: $!";
+        } else {
+          $Sarze::Worker::LoadError = "|$name| does not return a CODE";
+        }
+      }
+    >);
+  } else {
+    $self->{shutdown}->();
+    $self->log ("Terminated by option error");
+    return Promise->reject
+        ("Neither of |eval| and |psgi_file_name| options is specified");
+  }
+  my $options = Dumper {
+    connections_per_worker => $args->{connections_per_worker} || 1000,
+    seconds_per_worker => $args->{seconds_per_worker} || 60*10,
+    shutdown_timeout => $args->{shutdown_timeout} || 60*1,
+    worker_background_class => defined $args->{worker_background_class} ? $args->{worker_background_class} : '',
+    max_request_body_length => $args->{max_request_body_length},
+  };
+  $options =~ s/^\$VAR1 = /\$Sarze::Worker::Options = /;
+  $self->{forker}->eval (encode_web_utf8 $options);
+  return undef;
+} # _init_forker
+
 sub __create_check_worker ($) {
   my ($self) = @_;
   return Promise->resolve (1) if $self->{shutdowning};
@@ -231,67 +297,8 @@ sub start ($%) {
     # XXX recreate $fork
   }
 
-  $self->{forker} = my $forker = AnyEvent::Fork->new;
-  $forker->eval (q{
-    use AnyEvent;
-    $SIG{CHLD} = 'IGNORE';
-  })->require ('Sarze::Worker');
-  if (defined $args{eval}) {
-    if (defined $args{psgi_file_name}) {
-      $self->{shutdown}->();
-      $self->log ("Terminated by option error");
-      return Promise->reject
-          ("Both |eval| and |psgi_file_name| options are specified");
-    }
-    my $c = sub { scalar Carp::caller_info
-        (Carp::short_error_loc() || Carp::long_error_loc()) }->();
-    $c->{file} =~ tr/\x0D\x0A"/   /;
-    my $line = sprintf qq{\n#line 1 "Sarze eval (%s line %d)"\n}, $c->{file}, $c->{line};
-    $forker->eval (sprintf q{
-      eval "%s";
-      if ($@) {
-        $Sarze::Worker::LoadError = "$@";
-      } elsif (not defined &main::psgi_app) {
-        $Sarze::Worker::LoadError = "%s does not define &main::psgi_app";
-      }
-    }, quotemeta ($line.$args{eval}), quotemeta sprintf "Sarze eval (%s line %d)", $c->{file}, $c->{line});
-  } elsif (defined $args{psgi_file_name}) {
-    require Cwd;
-    my $name = quotemeta Cwd::abs_path ($args{psgi_file_name});
-    $forker->eval (q<
-      my $name = ">.$name.q<";
-      my $code = do $name;
-      if ($@) {
-        $Sarze::Worker::LoadError = "$name: $@";
-      } elsif (defined $code) {
-        if (ref $code eq 'CODE') {
-          *main::psgi_app = $code;
-        } else {
-          $Sarze::Worker::LoadError = "|$name| does not return a CODE";
-        }
-      } else {
-        if ($!) {
-          $Sarze::Worker::LoadError = "$name: $!";
-        } else {
-          $Sarze::Worker::LoadError = "|$name| does not return a CODE";
-        }
-      }
-    >);
-  } else {
-    $self->{shutdown}->();
-    $self->log ("Terminated by option error");
-    return Promise->reject
-        ("Neither of |eval| and |psgi_file_name| options is specified");
-  }
-  my $options = Dumper {
-    connections_per_worker => $args{connections_per_worker} || 1000,
-    seconds_per_worker => $args{seconds_per_worker} || 60*10,
-    shutdown_timeout => $args{shutdown_timeout} || 60*1,
-    worker_background_class => defined $args{worker_background_class} ? $args{worker_background_class} : '',
-    max_request_body_length => $args{max_request_body_length},
-  };
-  $options =~ s/^\$VAR1 = /\$Sarze::Worker::Options = /;
-  $forker->eval (encode_web_utf8 $options);
+  my $q = $self->_init_forker (\%args);
+  return $q if defined $q;
 
   my $p = $self->_create_check_worker;
   $self->{completed} = Promise->from_cv ($self->{global_cv})->then (sub {
@@ -301,7 +308,7 @@ sub start ($%) {
   });
   return $p->then (sub {
     for (@rstate) {
-      $forker->send_fh ($_->{fh});
+      $self->{forker}->send_fh ($_->{fh});
     }
     $self->_create_workers_if_necessary;
     return $self;
