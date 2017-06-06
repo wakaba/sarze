@@ -274,8 +274,8 @@ sub start ($%) {
     worker_background_class => defined $args{worker_background_class} ? $args{worker_background_class} : '',
     max_request_body_length => $args{max_request_body_length},
   };
-  $options =~ s/^\$VAR1 = //;
-  $forker->send_arg ($options);
+  $options =~ s/^\$VAR1 = /\$Sarze::Worker::Options = /;
+  $forker->eval ($options);
   my @fh;
   my @rstate;
   for (@{$args{hostports}}) {

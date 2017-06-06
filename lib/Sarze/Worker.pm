@@ -24,13 +24,12 @@ warn "$$ worker check no error";
 sub main {
 warn "$$ worker main started";
 
-  my $wp = bless {shutdown_worker_background => sub { },
+  my $wp = bless {%{$Sarze::Worker::Options},
+                  shutdown_worker_background => sub { },
                   id => $$,
                   n => 0,
                   server_ws => []}, 'Sarze::Worker::Process';
   $wp->{parent_fh} = shift;
-  my $options = eval shift; die $@ if $@;
-  $wp->{$_} = $options->{$_} for keys %$options;
   $wp->{server_fhs} = [@_];
 
   my $cv = AE::cv;
