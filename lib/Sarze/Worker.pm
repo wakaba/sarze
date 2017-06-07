@@ -95,11 +95,13 @@ sub main {
       return $wp->{worker_background_class}->start;
     })->then (sub {
       my $obj = $_[0]; # should be an object but might not ...
+      $wp->{worker_background_object} = $obj;
       my ($ok, $ng);
       my $p = Promise->new (sub { ($ok, $ng) = @_ });
       $wp->{shutdown_worker_background} = sub {
         $wp->{shutdown_worker_background} = sub { };
         Promise->resolve->then (sub {
+          $wp->log ("Stop worker background object...");
           return $obj->stop; # might return any value or throw
         })->catch (sub {
           $ng->($_[0]);
@@ -110,9 +112,22 @@ sub main {
       })->then (sub { $ok->() }, sub { $ng->($_[0]) });
       return $p;
     })->catch (sub {
-      warn $_[0]; # XXX report to main process
+      my $error = "Worker error: $_[0]";
+      $wp->log ($error);
+      warn $error;
     })->then ($shutdown);
-    $p = $p->then (sub { return $q });
+    $p = $p->then (sub { return $q })->then (sub {
+      my $obj = delete $wp->{worker_background_object};
+      return unless defined $obj;
+      return Promise->resolve->then (sub {
+        if ($obj->can ('destroy')) { # can throw
+          $wp->log ("Destroy worker background object...");
+          return $obj->destroy;
+        }
+      })->then (sub {
+        return $obj->completed;
+      });
+    });
   }
 
   for my $fh (@{$wp->{server_fhs}}) {
@@ -140,7 +155,11 @@ sub main {
     };
   } # $fh
 
-  $p->to_cv->recv; # main loop
+  $p->catch (sub {
+    my $error = "Worker error: $_[0]";
+    $wp->log ($error);
+    warn $error;
+  })->to_cv->recv; # main loop
   undef $shutdown_timer;
 
   $wp->log ("Worker completed");

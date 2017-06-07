@@ -173,6 +173,13 @@ is resolved and all HTTP connections have been closed, the worker
 process exits.  This can also be used by the worker background object
 to ask the worker to not accept incoming connections anymore.
 
+A worker background object may have a C<destory> method, which is
+invoked after all HTTP connections have been closed and the
+"background" steps have stopped and just before the termination of the
+worker process.  This method can be used to run the shutdown steps for
+the worker process.  It can return a promise object, which will delay
+the termination of the worker process until the resolution.
+
 =head1 SIGNALS
 
 While the Sarze server is running, it receives signals.
