@@ -112,6 +112,7 @@ sub main {
       })->then (sub { $ok->() }, sub { $ng->($_[0]) });
       return $p;
     })->catch (sub {
+      delete $wp->{worker_background_object};
       my $error = "Worker error: $_[0]";
       $wp->log ($error);
       warn $error;
