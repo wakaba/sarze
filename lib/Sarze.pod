@@ -185,6 +185,17 @@ worker process.  This method can be used to run the shutdown steps for
 the worker process.  It can return a promise object, which will delay
 the termination of the worker process until the resolution.
 
+A worker background object may have any other application specific
+methods.
+
+The worker background object of the worker process can be obtained
+from a PSGI application by invoking the C<background> method of the
+C<manakai.server.state> object (see manakai PSGI extensions
+specification
+<https://wiki.suikawiki.org/n/manakai%20PSGI%20extensions> for
+details) of the PSGI environment.  If there is no worker background
+object, the C<background> method returns C<undef>.
+
 =head1 SIGNALS
 
 While the Sarze server is running, it receives signals.

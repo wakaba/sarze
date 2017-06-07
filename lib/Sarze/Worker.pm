@@ -28,6 +28,7 @@ sub main {
                   server_ws => []}, 'Sarze::Worker::Process';
   $wp->{parent_fh} = shift;
   $wp->{server_fhs} = [@_];
+  $wp->{state} = bless {}, 'Sarze::Worker::State';
 
   my $cv = AE::cv;
   $cv->begin;
@@ -95,7 +96,7 @@ sub main {
       return $wp->{worker_background_class}->start;
     })->then (sub {
       my $obj = $_[0]; # should be an object but might not ...
-      $wp->{worker_background_object} = $obj;
+      $wp->{state}->{worker_background_object} = $obj;
       my ($ok, $ng);
       my $p = Promise->new (sub { ($ok, $ng) = @_ });
       $wp->{shutdown_worker_background} = sub {
@@ -112,13 +113,13 @@ sub main {
       })->then (sub { $ok->() }, sub { $ng->($_[0]) });
       return $p;
     })->catch (sub {
-      delete $wp->{worker_background_object};
+      delete $wp->{state}->{worker_background_object};
       my $error = "Worker error: $_[0]";
       $wp->log ($error);
       warn $error;
     })->then ($shutdown);
     $p = $p->then (sub { return $q })->then (sub {
-      my $obj = delete $wp->{worker_background_object};
+      my $obj = delete $wp->{state}->{worker_background_object};
       return unless defined $obj;
       return Promise->resolve->then (sub {
         if ($obj->can ('destroy')) { # can throw
@@ -143,7 +144,7 @@ sub main {
 
         my $con = Web::Transport::PSGIServerConnection
             ->new_from_app_and_ae_tcp_server_args
-                (\&main::psgi_app, $args, parent_id => $wp->{id});
+                (\&main::psgi_app, $args, parent_id => $wp->{id}, state => $wp->{state});
         $con->max_request_body_length ($wp->{max_request_body_length})
             if defined $wp->{max_request_body_length};
         $wp->{connections}->{$con} = $con;
@@ -167,6 +168,19 @@ sub main {
   close $wp->{parent_fh};
   undef $wp;
 } # main
+
+package Sarze::Worker::State;
+
+sub background ($) {
+  return $_[0]->{worker_background_object}; # or undef
+} # background
+
+sub DESTROY ($) {
+  local $@;
+  eval { die };
+  warn "Reference to @{[ref $_[0]]} is not discarded before global destruction"
+      if $@ =~ /during global destruction/;
+} # DESTROY
 
 package Sarze::Worker::Process;
 use constant DEBUG => $ENV{WEBSERVER_DEBUG} || 0;
@@ -215,7 +229,7 @@ sub dont_accept_anymore ($) {
 sub DESTROY ($) {
   local $@;
   eval { die };
-  warn "Reference to @{[ref $_[0]]} is not discarded before global destruction\n"
+  warn "Reference to @{[ref $_[0]]} is not discarded before global destruction"
       if $@ =~ /during global destruction/;
 } # DESTROY
 
