@@ -92,7 +92,9 @@ specified.
 
 =item worker_background_class => $class
 
-XXX
+Specify the Perl class package name of the worker background class.
+If omitted, no worker background class is used.  See L</WORKER
+BACKGROUND CLASS>.
 
 =item max_worker_count
 
@@ -117,13 +119,13 @@ even when there is a running handler.
 
 =back
 
-=head1 EXECUTION
+=head1 SERVER APPLICATION
 
 Sarze is a preforking HTTP server.  It creates worker processes which
 handle coming HTTP connections.
 
-Sarze first loads the server code (as specified by C<eval> or
-C<psgi_file_name> option) and then forks that as workers.  This means
+Sarze first loads the server code, as specified by C<eval> or
+C<psgi_file_name> option, and then forks that as workers.  This means
 that any variable value initialized at loading is shared among the
 workers executed by a server.  For example,
 
@@ -136,6 +138,40 @@ workers executed by a server.  For example,
   },
 
 ... always returns the same number.
+
+=head1 WORKER BACKGROUND CLASS
+
+When a worker process is created, the B<worker background class>, as
+specified by the C<worker_background_class> option, is instantiated.
+
+The class, if any, must be loaded as part of the server.  That is, the
+code specified by the C<eval> or C<psgi_file_name> option must define
+the class.
+
+The class must have the B<C<start>> method.  It is invoked when a
+worker process is created.  It must return an object, which is
+referred to as B<worker background object>.  It may instead return a
+promise (e.g. L<Promise>) object, which must be resolved with an
+object.
+
+The C<start> method can be used to run any per-worker initialization
+steps.  The worker will not accept any connection until the method
+returns an object (directly or indirectly through a promise).  The
+method can also used to dispatch "background" steps running
+concurrently with HTTP connection processing.
+
+A worker background object must have a C<stop> method, which is
+invoked when the worker process is expected to be terminated.  If
+there is any "background" steps, it should be terminated as soon as
+possible.  This method might be invoked even when there are ongoing
+HTTP connections.
+
+A worker background object must have a C<completed> method, which must
+return a promise object.  The promise must not be resolved until the
+worker background object is ready to be discarded.  After the promise
+is resolved and all HTTP connections have been closed, the worker
+process exits.  This can also be used by the worker background object
+to ask the worker to not accept incoming connections anymore.
 
 =head1 SIGNALS
 

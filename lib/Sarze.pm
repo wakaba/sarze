@@ -71,15 +71,27 @@ sub _init_forker ($$) {
     return Promise->reject
         ("Neither of |eval| and |psgi_file_name| options is specified");
   }
+
+  if (defined $args->{worker_background_class}) {
+    $self->{forker}->eval (sprintf q{
+      unless ("%s"->can ('start')) {
+        $Sarze::Worker::LoadError = "%s->start is not defined";
+      }
+    },
+      quotemeta $args->{worker_background_class},
+      quotemeta $args->{worker_background_class});
+  }
+
   my $options = Dumper {
     connections_per_worker => $args->{connections_per_worker} || 1000,
     seconds_per_worker => $args->{seconds_per_worker} || 60*10,
     shutdown_timeout => $args->{shutdown_timeout} || 60*1,
-    worker_background_class => defined $args->{worker_background_class} ? $args->{worker_background_class} : '',
+    worker_background_class => $args->{worker_background_class},
     max_request_body_length => $args->{max_request_body_length},
   };
   $options =~ s/^\$VAR1 = /\$Sarze::Worker::Options = /;
   $self->{forker}->eval (encode_web_utf8 $options);
+
   return undef;
 } # _init_forker
 

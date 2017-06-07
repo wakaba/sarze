@@ -115,7 +115,7 @@ sub main {
   } # $fh
 
   my $p = Promise->from_cv ($cv);
-  if (length $wp->{worker_background_class}) {
+  if (defined $wp->{worker_background_class}) {
     my $q = Promise->resolve->then (sub {
       return $wp->{worker_background_class}->start;
     })->then (sub {
