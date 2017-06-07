@@ -8,22 +8,25 @@ XXX
 
 =head1 DESCRIPTION
 
-XXX
+B<Sarze> is an HTTP server in Perl for L<AnyEvent>-aware applications
+providing L<Promise>-based API.
+
+The C<Sarze> module has the server class.
 
 =head1 METHODS
 
 There are following methods:
 
-XXX
+=over 4
 
-$p = $server->run (...)
+=item $p = Sarze->run (...)
 
 Run the server and return a promise that is resolved when the server
 is stopped.
 
 XXX
 
-$p = $server->start (...)
+=item $p = Sarze->start (...)
 
 Run the server and return a promise that is resolved with the server
 object when the server is ready to accept connections.
@@ -55,6 +58,8 @@ XXX
 The completed promise should be resolved when the background process
 has been stopped.  When the completed promise is resolved or rejected,
 the entire worker process is to be stopped.
+
+=back
 
 =head1 OPTIONS
 
