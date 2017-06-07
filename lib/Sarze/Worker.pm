@@ -89,31 +89,6 @@ sub main {
        on_error => sub { $_[0]->destroy });
   # XXX should run $shutdown when connection is closed
 
-  for my $fh (@{$wp->{server_fhs}}) {
-    push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
-      while (1) {
-        $cv->begin;
-        my ($args, $n) = $wp->accept_next ($fh);
-        unless (defined $args) {
-          $cv->end;
-          last;
-        }
-
-        my $con = Web::Transport::PSGIServerConnection
-            ->new_from_app_and_ae_tcp_server_args
-                (\&main::psgi_app, $args, parent_id => $wp->{id});
-        $con->max_request_body_length ($wp->{max_request_body_length})
-            if defined $wp->{max_request_body_length};
-        $wp->{connections}->{$con} = $con;
-        promised_cleanup {
-          $wp->log (sprintf "Connection completed (%s)", $con->id);
-          $cv->end;
-          delete $wp->{connections}->{$con};
-        } $con->completed;
-      }
-    };
-  } # $fh
-
   my $p = Promise->from_cv ($cv);
   if (defined $wp->{worker_background_class}) {
     my $q = Promise->resolve->then (sub {
@@ -139,6 +114,31 @@ sub main {
     })->then ($shutdown);
     $p = $p->then (sub { return $q });
   }
+
+  for my $fh (@{$wp->{server_fhs}}) {
+    push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
+      while (1) {
+        $cv->begin;
+        my ($args, $n) = $wp->accept_next ($fh);
+        unless (defined $args) {
+          $cv->end;
+          last;
+        }
+
+        my $con = Web::Transport::PSGIServerConnection
+            ->new_from_app_and_ae_tcp_server_args
+                (\&main::psgi_app, $args, parent_id => $wp->{id});
+        $con->max_request_body_length ($wp->{max_request_body_length})
+            if defined $wp->{max_request_body_length};
+        $wp->{connections}->{$con} = $con;
+        promised_cleanup {
+          $wp->log (sprintf "Connection completed (%s)", $con->id);
+          $cv->end;
+          delete $wp->{connections}->{$con};
+        } $con->completed;
+      }
+    };
+  } # $fh
 
   $p->to_cv->recv; # main loop
   undef $shutdown_timer;
