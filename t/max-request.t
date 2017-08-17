@@ -3,6 +3,7 @@ use warnings;
 use Path::Tiny;
 use lib path (__FILE__)->parent->parent->child ('t_deps/lib')->stringify;
 use Tests;
+use Web::Transport::BasicClient;
 
 test {
   my $c = shift;
@@ -10,7 +11,7 @@ test {
   my $port1 = find_listenable_port;
 
   my $url1 = Web::URL->parse_string (qq<http://$host:$port1>);
-  my $client1 = Web::Transport::ConnectionClient->new_from_url ($url1);
+  my $client1 = Web::Transport::BasicClient->new_from_url ($url1);
 
   my $server;
   promised_cleanup {
@@ -47,7 +48,7 @@ test {
   my $port1 = find_listenable_port;
 
   my $url1 = Web::URL->parse_string (qq<http://$host:$port1>);
-  my $client1 = Web::Transport::ConnectionClient->new_from_url ($url1);
+  my $client1 = Web::Transport::BasicClient->new_from_url ($url1);
 
   my $server;
   promised_cleanup {
@@ -85,7 +86,7 @@ test {
   my $port1 = find_listenable_port;
 
   my $url1 = Web::URL->parse_string (qq<http://$host:$port1>);
-  my $client1 = Web::Transport::ConnectionClient->new_from_url ($url1);
+  my $client1 = Web::Transport::BasicClient->new_from_url ($url1);
 
   my $server;
   promised_cleanup {
@@ -112,6 +113,44 @@ test {
       test {
         is $res1->status, 200;
         is $res1->body_bytes, 'OK!';
+      } $c;
+    });
+  });
+} n => 2, name => 'max request body length specified';
+
+test {
+  my $c = shift;
+  my $host = '127.0.0.1';
+  my $port1 = find_listenable_port;
+
+  my $url1 = Web::URL->parse_string (qq<http://$host:$port1>);
+  my $client1 = Web::Transport::BasicClient->new_from_url ($url1);
+
+  my $server;
+  promised_cleanup {
+    return Promise->all ([
+      (defined $server ? $server->stop : undef),
+      $client1->close,
+    ])->then (sub { done $c; undef $c });
+  } Sarze->start (
+    hostports => [
+      [$host, $port1],
+    ],
+    eval => q{
+      sub main::psgi_app {
+        return [200, [], ['OK!']];
+      }
+    },
+    max_request_body_length => 1,
+  )->then (sub {
+    $server = $_[0];
+    return Promise->all ([
+      $client1->request (path => [], body => 'xy'),
+    ])->then (sub {
+      my ($res1) = @{$_[0]};
+      test {
+        is $res1->status, 413;
+        is $res1->body_bytes, '413';
       } $c;
     });
   });
