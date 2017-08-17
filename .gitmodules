@@ -26,3 +26,6 @@
 	path = t_deps/modules/promised-command
 	url = https://github.com/wakaba/perl-promised-command
 	track = master
+[submodule "modules/streams"]
+	path = modules/streams
+	url = https://github.com/manakai/perl-streams
