@@ -142,11 +142,13 @@ sub main {
           last;
         }
 
+        my $opts = {psgi_app => \&main::psgi_app,
+                    parent_id => $wp->{id},
+                    state => $wp->{state}};
+        $opts->{max_request_body_length} = $wp->{max_request_body_length}
+            if defined $wp->{max_request_body_length}; # undef ignored
         my $con = Web::Transport::PSGIServerConnection
-            ->new_from_app_and_ae_tcp_server_args
-                (\&main::psgi_app, $args, parent_id => $wp->{id}, state => $wp->{state});
-        $con->max_request_body_length ($wp->{max_request_body_length})
-            if defined $wp->{max_request_body_length};
+            ->new_from_aeargs_and_opts ($args, $opts);
         $wp->{connections}->{$con} = $con;
         promised_cleanup {
           $wp->log (sprintf "Connection completed (%s)", $con->id);
