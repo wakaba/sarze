@@ -1,12 +1,12 @@
 AnyEvent~7.14
 AnyEvent::Fork~1.31
-AnyEvent::Socket
+AnyEvent::Util
 Canary::Stability~2012
 Carp~1.38
 Cwd~3.62
 Data::Dumper~2.161
 Digest::SHA~5.98
-Filter::Util::Call~1.57
+Filter::Util::Call~1.58
 IO::FDPass~1.2
 MIME::Base64~3.15
 Net::SSLeay~1.82
@@ -15,6 +15,6 @@ Proc::FastSpawn~1.2
 Scalar::Util~1.49
 Socket~2.024
 Term::ANSIColor~4.06
-Test::More~1.302106
+Test::More~1.302113
 Time::HiRes~1.9746
 common::sense~3.74
