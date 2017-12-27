@@ -251,6 +251,8 @@ sub _create_workers_if_necessary ($) {
 
 sub start ($%) {
   my ($class, %args) = @_;
+  return Promise->reject ("|hostports| is not specified")
+      unless defined $args{hostports};
 
   my $self = bless {
     workers => {},
@@ -345,7 +347,7 @@ sub run ($@) {
 sub DESTROY ($) {
   local $@;
   eval { die };
-  warn "Reference to @{[ref $_[0]]} ($_[0]->{id}) is not discarded before global destruction"
+  warn "$$: Reference to @{[ref $_[0]]} ($_[0]->{id}) is not discarded before global destruction"
       if $@ =~ /during global destruction/;
 } # DESTROY
 
