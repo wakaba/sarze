@@ -1,8 +1,10 @@
 package Sarze::Worker;
 use strict;
 use warnings;
+our $VERSION = '2.0';
 use AnyEvent;
 use AnyEvent::Handle;
+use AbortController;
 use Promise;
 use Promised::Flow;
 use Web::Encoding;
@@ -22,7 +24,6 @@ sub check {
 sub main {
   srand;
   my $wp = bless {%{$Sarze::Worker::Options},
-                  shutdown_worker_background => sub { },
                   id => $$,
                   n => 0,
                   server_ws => []}, 'Sarze::Worker::Process';
@@ -30,152 +31,224 @@ sub main {
   $wp->{server_fhs} = [@_];
   $wp->{state} = bless {}, 'Sarze::Worker::State';
 
-  my $cv = AE::cv;
-  $cv->begin;
-  $wp->{done} = sub { $cv->end };
-
-  my $worker_timer;
-  my $shutdown_timer;
-  my $shutdown = sub {
-    $wp->dont_accept_anymore;
-    for (values %{$wp->{connections} or {}}) {
-      $_->close_after_current_response;
-    }
-    delete $wp->{connections};
-    delete $wp->{signals};
-    $shutdown_timer = AE::timer $wp->{shutdown_timeout}, 0, sub {
-      $cv->croak ("$wp->{id}: Shutdown timeout ($wp->{shutdown_timeout})\n");
-      undef $shutdown_timer;
-    };
-    undef $worker_timer;
-    $wp->{shutdown_worker_background}->();
-  }; # $shutdown
-
+  my $worker_ac = AbortController->new;
+  $wp->{state}->{abort} = sub {
+    $worker_ac->abort;
+    $worker_ac->signal->manakai_error ($_[0]) if defined $_[0];
+  };
+  $worker_ac->signal->manakai_onabort (sub { });
   for my $sig (qw(INT TERM QUIT)) {
     $wp->{signals}->{$sig} = AE::signal $sig => sub {
       $wp->log ("SIG$sig received");
-      $shutdown->();
+      $wp->{state}->{abort}->();
     };
   }
 
-  if ($wp->{seconds_per_worker} > 0) {
-    my $timeout = $wp->{seconds_per_worker};
-    if ($timeout >= 60*10) {
-      $timeout += rand (60*5);
-    } elsif ($timeout >= 60) {
-      $timeout += rand 30;
-    }
-    $worker_timer = AE::timer $timeout, 0, sub {
-      $wp->log ("|seconds_per_worker| elapsed ($timeout)");
-      $shutdown->();
-    };
-  }
+  my $ws_completed;
+  my $ws_ac = AbortController->new;
+  my $ws_pre_ac = AbortController->new;
+  Promise->resolve->then (sub {
+    return $wp->{worker_state_class}->start (
+      state => $wp->{state},
+      params => delete $wp->{worker_state_params},
+      _pre_signal => $ws_pre_ac->signal,
+      signal => $ws_ac->signal,
+    );
+  })->then (sub {
+    die $worker_ac->signal->manakai_error if $worker_ac->signal->aborted;
+    $wp->{state}->{data} = $_[0]->[0];
+    $ws_completed = Promise->resolve ($_[0]->[1]);
+    # or throw
 
-  $wp->{parent_handle} = AnyEvent::Handle->new
-      (fh => $wp->{parent_fh},
-       on_read => sub {
-         while ($_[0]->{rbuf} =~ s/^([^\x0A]*)\x0A//) {
-           my $line = $1;
-           if ($line =~ /\Ashutdown\z/) {
-             $shutdown->();
-           } elsif ($line =~ s/^parent_id //) {
-             $wp->{id} = $line . '.' . $$;
-             $wp->log ("Worker started");
-           } else {
-             $wp->log ("Broken command from main process: |$line|");
-           }
-         }
-       },
-       on_eof => sub { $_[0]->destroy },
-       on_error => sub { $_[0]->destroy });
-  # XXX should run $shutdown when connection is closed
+    my $shutdown_timer;
+    return Promise->resolve->then (sub {
+      my $cons_cv = AE::cv;
+      $cons_cv->begin;
+      $wp->{done} = sub { $cons_cv->end };
 
-  my $p = Promise->from_cv ($cv);
-  if (defined $wp->{worker_background_class}) {
-    my $q = Promise->resolve->then (sub {
-      return $wp->{worker_background_class}->start;
-    })->then (sub {
-      my $obj = $_[0]; # should be an object but might not ...
-      $wp->{state}->{worker_background_object} = $obj;
-      my ($ok, $ng);
-      my $p = Promise->new (sub { ($ok, $ng) = @_ });
-      $wp->{shutdown_worker_background} = sub {
-        $wp->{shutdown_worker_background} = sub { };
-        Promise->resolve->then (sub {
-          $wp->log ("Stop worker background object...");
-          return $obj->stop; # might return any value or throw
-        })->catch (sub {
-          $ng->($_[0]);
-        });
-      };
-      Promise->resolve->then (sub {
-        return $obj->completed;
-      })->then (sub { $ok->() }, sub { $ng->($_[0]) });
-      return $p;
+      my $worker_timer;
+      my $shutdown = sub {
+        $wp->log ("Worker shutdown...");
+        $wp->dont_accept_anymore;
+        for (values %{$wp->{connections} or {}}) {
+          $_->close_after_current_response
+              (timeout => $wp->{shutdown_timeout});
+        }
+        delete $wp->{connections};
+        delete $wp->{signals};
+        $shutdown_timer = AE::timer $wp->{shutdown_timeout}+1, 0, sub {
+          $cons_cv->croak
+              ("$wp->{id}: Shutdown timeout ($wp->{shutdown_timeout})\n");
+          undef $shutdown_timer;
+        };
+        undef $worker_timer;
+        $ws_pre_ac->abort;
+      }; # $shutdown
+      for my $sig (qw(INT TERM QUIT)) {
+        $wp->{signals}->{$sig} = AE::signal $sig => sub {
+          $wp->log ("SIG$sig received");
+          $shutdown->();
+        };
+      }
+      die $worker_ac->signal->manakai_error if $worker_ac->signal->aborted;
+      $worker_ac->signal->manakai_onabort ($shutdown);
+
+      if ($wp->{seconds_per_worker} > 0) {
+        my $timeout = $wp->{seconds_per_worker};
+        if ($timeout >= 60*10) {
+          $timeout += rand (60*5);
+        } elsif ($timeout >= 60) {
+          $timeout += rand 30;
+        }
+        $worker_timer = AE::timer $timeout, 0, sub {
+          $wp->log ("|seconds_per_worker| elapsed ($timeout)");
+          $shutdown->();
+        };
+      }
+
+      $wp->{parent_handle} = AnyEvent::Handle->new
+          (fh => $wp->{parent_fh},
+           on_read => sub {
+             while ($_[0]->{rbuf} =~ s/^([^\x0A]*)\x0A//) {
+               my $line = $1;
+               if ($line =~ /\Ashutdown\z/) {
+                 $shutdown->();
+               } elsif ($line =~ s/^parent_id //) {
+                 $wp->{id} = $line . '.' . $$;
+                 $wp->log ("Worker started");
+               } else {
+                 $wp->log ("Broken command from main process: |$line|");
+               }
+             }
+           },
+           on_eof => sub { $_[0]->destroy },
+           on_error => sub { $_[0]->destroy });
+      # XXX should run $shutdown when connection is closed
+
+      ## Accept HTTP connections
+      for my $fh (@{$wp->{server_fhs}}) {
+        push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
+          while (1) {
+            $cons_cv->begin;
+            my ($args, $n) = $wp->accept_next ($fh);
+            unless (defined $args) {
+              $cons_cv->end;
+              last;
+            }
+
+            my $opts = {psgi_app => \&main::psgi_app,
+                        parent_id => $wp->{id},
+                        state => $wp->{state}};
+            $opts->{max_request_body_length} = $wp->{max_request_body_length}
+                if defined $wp->{max_request_body_length}; # undef ignored
+            my $con = Web::Transport::PSGIServerConnection
+                ->new_from_aeargs_and_opts ($args, $opts);
+            $wp->{connections}->{$con} = $con;
+            $con->completed->finally (sub {
+              $wp->log (sprintf "Connection completed (%s)", $con->id);
+              $cons_cv->end;
+              delete $wp->{connections}->{$con};
+            });
+          } # while
+        };
+      } # $fh
+
+      return Promise->from_cv ($cons_cv); # connections done
     })->catch (sub {
-      delete $wp->{state}->{worker_background_object};
       my $error = "Worker error: $_[0]";
       $wp->log ($error);
       warn $error;
-    })->then ($shutdown);
-    $p = $p->then (sub { return $q })->then (sub {
-      my $obj = delete $wp->{state}->{worker_background_object};
-      return unless defined $obj;
-      return Promise->resolve->then (sub {
-        if ($obj->can ('destroy')) { # can throw
-          $wp->log ("Destroy worker background object...");
-          return $obj->destroy;
-        }
-      })->then (sub {
-        return $obj->completed;
-      });
+    })->finally (sub {
+      undef $shutdown_timer;
     });
-  }
-
-  for my $fh (@{$wp->{server_fhs}}) {
-    push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
-      while (1) {
-        $cv->begin;
-        my ($args, $n) = $wp->accept_next ($fh);
-        unless (defined $args) {
-          $cv->end;
-          last;
-        }
-
-        my $opts = {psgi_app => \&main::psgi_app,
-                    parent_id => $wp->{id},
-                    state => $wp->{state}};
-        $opts->{max_request_body_length} = $wp->{max_request_body_length}
-            if defined $wp->{max_request_body_length}; # undef ignored
-        my $con = Web::Transport::PSGIServerConnection
-            ->new_from_aeargs_and_opts ($args, $opts);
-        $wp->{connections}->{$con} = $con;
-        promised_cleanup {
-          $wp->log (sprintf "Connection completed (%s)", $con->id);
-          $cv->end;
-          delete $wp->{connections}->{$con};
-        } $con->completed;
-      }
-    };
-  } # $fh
-
-  $p->catch (sub {
+  })->then (sub {
+    $wp->log ("Destroy worker state object...");
+    $ws_pre_ac->abort;
+    $ws_ac->abort;
+    delete $wp->{state};
+    $worker_ac->signal->manakai_onabort (sub { });
+    return $ws_completed;
+  })->catch (sub {
     my $error = "Worker error: $_[0]";
     $wp->log ($error);
-    warn $error;
+    delete $wp->{state};
   })->to_cv->recv; # main loop
-  undef $shutdown_timer;
 
   $wp->log ("Worker completed");
   close $wp->{parent_fh};
   undef $wp;
 } # main
 
+package Sarze::Worker::EmptyWorkerState;
+
+sub start ($%) {
+  return [undef, Promise->resolve];
+} # start
+
+package Sarze::Worker::BackgroundWorkerState;
+# for backcompat
+use Promised::Flow;
+
+sub start ($%) {
+  my ($class, %args) = @_;
+  my ($r1, $s1) = promised_cv;
+  my ($r2, $s2) = promised_cv;
+  $args{signal}->manakai_onabort (sub {
+    $s1->();
+    undef $s1;
+    $s2->();
+    undef $s2;
+  });
+  return Promise->resolve->then (sub {
+    return $args{params}->{class}->start;
+  })->then (sub {
+    my $obj = $_[0];
+    my $stop_failed;
+    $args{_pre_signal}->manakai_onabort (sub {
+      return Promise->resolve->then (sub {
+        $obj->stop; # can throw
+      })->then (sub {
+        $s2->();
+        undef $s2;
+      }, sub {
+        $s2->();
+        $stop_failed = 1;
+        undef $s2;
+      });
+    });
+    $args{signal}->manakai_onabort (sub {
+      return $r2->then (sub {
+        if (not $stop_failed and $obj->can ('destroy')) { # can throw
+          return $obj->destroy; # can throw
+        }
+      })->then (sub {
+        return $obj->completed unless $stop_failed;
+      })->finally (sub {
+        $s1->();
+        undef $s1;
+        (delete $args{state})->abort if defined $args{state};
+      });
+    });
+    $obj->completed->then (sub {
+      (delete $args{state})->abort (undef) if defined $args{state};
+    }, sub {
+      (delete $args{state})->abort ($_[0]) if defined $args{state};
+    });
+    return [$obj, Promise->all ([$r1->catch (sub { }), $r2->catch (sub { })])];
+  })->catch (sub {
+    $args{signal}->manakai_onabort (sub { });
+    die $_[0];
+  });
+} # start
+
 package Sarze::Worker::State;
 
-sub background ($) {
-  return $_[0]->{worker_background_object}; # or undef
-} # background
+sub abort ($;$) {
+  $_[0]->{abort}->($_[1]);
+} # abort
+
+sub data ($) { return $_[0]->{data} }
+*background = \&data; # backcompat
 
 sub DESTROY ($) {
   local $@;
@@ -225,7 +298,7 @@ sub dont_accept_anymore ($) {
 
   $self->{done}->();
 
-  $self->log ("Worker closed");
+  $self->log ("Worker no longer accepts new requests");
 } # dont_accept_anymore
 
 sub DESTROY ($) {
@@ -239,7 +312,7 @@ sub DESTROY ($) {
 
 =head1 LICENSE
 
-Copyright 2016-2017 Wakaba <wakaba@suikawiki.org>.
+Copyright 2016-2019 Wakaba <wakaba@suikawiki.org>.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

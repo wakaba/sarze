@@ -50,7 +50,7 @@ test {
       sub stop {
         my $done = $_[0]->{done};
         print $TempFile "stop\n" if defined $TempFile;
-        promised_sleep (1)->then (sub {
+        return promised_sleep (1)->then (sub {
           print $TempFile "stop sleeped\n" if defined $TempFile;
           $done->();
         });
@@ -78,6 +78,8 @@ test {
         is $res1->body_bytes, "body";
       } $c;
       return $server->stop;
+    })->then (sub {
+      return promised_sleep 1;
     })->then (sub {
       test {
         is $temp_path->slurp, "stop\nstop sleeped\n";

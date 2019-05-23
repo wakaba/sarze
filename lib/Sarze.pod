@@ -95,11 +95,13 @@ method is to be rejected with an error.
 If this option is specified, the C<psgi_file_name> option must not be
 specified.
 
-=item worker_background_class => $class
+=item [DEPRECATED] worker_background_class => $class
 
 Specify the Perl class package name of the worker background class.
 If omitted, no worker background class is used.  See L</WORKER
 BACKGROUND CLASS>.
+
+Use of this option is B<deprecated>.
 
 =item max_worker_count
 
@@ -145,6 +147,8 @@ workers executed by a server.  For example,
 ... always returns the same number.
 
 =head1 WORKER BACKGROUND CLASS
+
+B<DEPRECATED>.
 
 When a worker process is created, the B<worker background class>, as
 specified by the C<worker_background_class> option, is instantiated.
@@ -233,7 +237,7 @@ Wakaba <wakaba@suikawiki.org>.
 
 =head1 LICENSE
 
-Copyright 2016-2017 Wakaba <wakaba@suikawiki.org>.
+Copyright 2016-2019 Wakaba <wakaba@suikawiki.org>.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

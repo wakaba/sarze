@@ -1,7 +1,7 @@
 package Sarze;
 use strict;
 use warnings;
-our $VERSION = '1.0';
+our $VERSION = '2.0';
 use Carp;
 use Data::Dumper;
 use AnyEvent::Socket;
@@ -72,22 +72,30 @@ sub _init_forker ($$) {
         ("Neither of |eval| and |psgi_file_name| options is specified");
   }
 
-  if (defined $args->{worker_background_class}) {
+  if (defined $args->{worker_state_class} or
+      defined $args->{worker_background_class}) {
+    my $cls = $args->{worker_state_class} // $args->{worker_background_class};
     $self->{forker}->eval (sprintf q{
       unless ("%s"->can ('start')) {
         $Sarze::Worker::LoadError = "%s->start is not defined";
       }
-    },
-      quotemeta $args->{worker_background_class},
-      quotemeta $args->{worker_background_class});
+    }, quotemeta $cls, quotemeta $cls);
+    if (defined $args->{worker_background_class}) {
+      warn "Use of Sarze option |worker_background_class| is deprecated\n";
+      $args->{worker_state_class} = 'Sarze::Worker::BackgroundWorkerState';
+      $args->{worker_state_params} = {class => delete $args->{worker_background_class}};
+    }
+  } else {
+    $args->{worker_state_class} = 'Sarze::Worker::EmptyWorkerState';
   }
 
   my $options = Dumper {
     connections_per_worker => $args->{connections_per_worker} || 1000,
     seconds_per_worker => $args->{seconds_per_worker} || 60*10,
     shutdown_timeout => $args->{shutdown_timeout} || 60*1,
-    worker_background_class => $args->{worker_background_class},
     max_request_body_length => $args->{max_request_body_length},
+    worker_state_class => $args->{worker_state_class},
+    worker_state_params => $args->{worker_state_params}, # or undef
   };
   $options =~ s/^\$VAR1 = /\$Sarze::Worker::Options = /;
   $self->{forker}->eval (encode_web_utf8 $options);

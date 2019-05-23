@@ -66,7 +66,7 @@ test {
         my $self = $_[0];
         $Count++;
         $Stopped = 1;
-        promised_sleep (1)->then (sub {
+        return promised_sleep (1)->then (sub {
           $Count++;
           $self->{stop}->();
         });
@@ -98,6 +98,8 @@ test {
       @req, # after requests are sent (but not received response), stop server
       promised_sleep (1)->then (sub { $server->stop }),
     ]);
+  })->then (sub {
+    return promised_wait_until { $temp_path->slurp } timeout => 10;
   })->then (sub {
     test {
       is $temp_path->slurp, "23";
@@ -167,7 +169,7 @@ test {
         my $self = $_[0];
         $Count++;
         $Stopped = 1;
-        promised_sleep (1)->then (sub {
+        return promised_sleep (1)->then (sub {
           $Count++;
           $self->{stop}->();
         });
@@ -201,6 +203,8 @@ test {
       @req, # after requests are sent (but not received response), stop server
       promised_sleep (1)->then (sub { $server->stop }),
     ]);
+  })->then (sub {
+    return promised_wait_until { $temp_path->slurp } timeout => 10;
   })->then (sub {
     test {
       is $temp_path->slurp, "23";
@@ -277,7 +281,7 @@ run_tests;
 
 =head1 LICENSE
 
-Copyright 2016-2017 Wakaba <wakaba@suikawiki.org>.
+Copyright 2016-2019 Wakaba <wakaba@suikawiki.org>.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
