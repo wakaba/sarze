@@ -67,7 +67,7 @@ Following options can be specified to C<start> and C<run> methods:
 
 =over 4
 
-=item hostports => [[$host, $port], ...]
+=item hostports => [[$host, $port], ...] (required)
 
 An array reference of zero or more host/port pair array references.  A
 host/port pair must be either a pair of IP address and port (for TCP
