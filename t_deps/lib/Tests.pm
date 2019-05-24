@@ -8,6 +8,7 @@ use Test::X1;
 use Test::More;
 use Web::URL;
 use Web::Transport::ConnectionClient;
+use Web::Transport::BasicClient;
 use Sarze;
 use Promise;
 use Promised::Flow;

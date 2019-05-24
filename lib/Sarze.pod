@@ -45,20 +45,6 @@ $p = $server->completed
 XXX
 Promise must be resolved with an object that is XXX
 
-$object->stop
-
-XXX
-
-This method is invoked when the worker process is to be stopped.
-
-$promise = $object->completed
-
-XXX
-
-The completed promise should be resolved when the background process
-has been stopped.  When the completed promise is resolved or rejected,
-the entire worker process is to be stopped.
-
 =back
 
 =head1 OPTIONS
@@ -103,6 +89,20 @@ BACKGROUND CLASS>.
 
 Use of this option is B<deprecated>.
 
+=item worker_state_class => $class,
+
+Specify the Perl class package name of the worker state class.  If
+omitted, no worker state class is used.  See L</WORKER STATE CLASS>.
+
+=item worker_state_params => $value
+
+Specify a C<worker_state_class> dependent value, typically a hash
+reference representing parameters.  If omitted, defaulted to C<undef>.
+A copy of this value is accessible from the worker state class's
+C<start> method.  See L</WORKER STATE CLASS>.  As a clone of the value
+is transferred to forked worker processes, it must not contain any
+blessed object.
+
 =item max_worker_count
 
 XXX
@@ -146,9 +146,102 @@ workers executed by a server.  For example,
 
 ... always returns the same number.
 
+=head1 WORKER STATE CLASS
+
+When a worker process is created, the B<worker state class>, as
+specified by the C<worker_state_class>, is instantiated.
+
+The class, if any, must be loaded as part of the server.  That is, the
+code specified by the C<eval> or C<psgi_file_name> option must define
+the class either directly or by C<require>ing or C<use>ing other
+module.
+
+The class must have the B<C<start>> method.  It is invoked when a
+worker process is created, before accepting connections.  The method
+is invoked with arguments, given as following key/value pairs:
+
+=over 4
+
+=item params => $value
+
+The value specified by the C<worker_state_params> option.
+
+=item signal => $signal
+
+An L<AbortSignal> object.  The signal is aborted when the worker
+process is shutting down.
+
+=item state => $worker_state
+
+The worker process state object of the worker process.  See L</WORKER
+PROCESS STATE OBJECT>.
+
+=back
+
+The C<start> method must return an array reference of two items: a
+worker state class dependent value and a promise (e.g. L<Promise>).
+The method can instead return a promise, which is to be resolved with
+an array reference.
+
+As no connection is handled before the C<start> method is returned
+(and the returned promise is resolved), the method can be used to run
+an application-dependent per-worker initialization steps.
+
+If the C<start> method throws or the returned promise is rejected, the
+worker process is terminated immediately.
+
+The first (index 0) item of the array reference returned by the
+C<start> method is set to the C<data> method's value of the worker
+process state object, such that it is accessible from PSGI application
+invocations.
+
+The C<signal> is signaled just before the worker is shutting down,
+after the completion of handling of all requests.  This can be used to
+run an application-dependent per-worker cleanup steps.
+
+The second (index 1) item of the array reference returned by the
+C<start> method must be resolved when the application is ready to
+shutdown the worker process.  The worker process delays the
+termination until the promise is resolved.  Note that the promise can
+be resolved even before the C<signal>'s invocation in case there is no
+additional cleanup steps.
+
+=item WORKER PROCESS STATE OBJECT
+
+A worker process has a single B<worker process state object>.  The
+C<start> method of a worker state class is invoked with C<state>
+option.  A PSGI application is invoked with C<manakai.server.state> in
+the PSGI environment (see manakai PSGI extensions specification
+<https://wiki.suikawiki.org/n/manakai%20PSGI%20extensions> for
+details).  The application can access to per worker process states and
+can control the worker process through this object.  It has following
+methods:
+
+=over 4
+
+=item $value = $state->data
+
+An application-specific value in the array reference returned by the
+C<start> method of the worker state class, defaulted to C<undef>.
+Though the value cannot be changed, by using a hash reference as the
+value, it can hold application specific states which can be get or set
+by the PSGI application.
+
+=item $state->abort ($reason?)
+
+Ask the worker process to terminate.  The worker process then stops as
+soon as possible.  If a non-C<undef> argument is specified, it is the
+"reason" exception object of abortion.
+
+This method should only be used in an exceptional situation, e.g. when
+the worker state class has detected a non-recoverable error.
+
+=back
+
 =head1 WORKER BACKGROUND CLASS
 
-B<DEPRECATED>.
+B<DEPRECATED>.  When a worker state class is specified, the worker
+background class cannot be used.
 
 When a worker process is created, the B<worker background class>, as
 specified by the C<worker_background_class> option, is instantiated.
@@ -220,7 +313,8 @@ The C<Sarze> module requires Perl 5.10 or later.
 It requires modules L<AnyEvnet::Socket> and L<AnyEvent::Fork>.
 
 It also requires following Perl modules (submodules of this Git
-repository): <https://github.com/wakaba/perl-promise>,
+repository): <https://github.com/wakaba/perl-promise> (which has
+L<Promise>, L<AbortController>, and L<AbortSignal>),
 <https://github.com/manakai/perl-web-datetime>,
 <https://github.com/manakai/perl-web-encodings>,
 <https://github.com/manakai/perl-web-resource>, and
