@@ -41,6 +41,12 @@ test {
         is $res1->status, 413;
         is $res1->body_bytes, '413';
       } $c;
+    }, sub {
+      my $e = $_[0];
+      test {
+        is $e->is_network_error, $e;
+        ok $^O eq 'darwin';
+      } $c;
     });
   });
 } n => 2, name => 'default max request body length';
@@ -78,6 +84,12 @@ test {
       test {
         is $res1->status, 413;
         is $res1->body_bytes, '413';
+      } $c;
+    }, sub {
+      my $e = $_[0];
+      test {
+        is $e->is_network_error, $e;
+        ok $^O eq 'darwin';
       } $c;
     });
   });
