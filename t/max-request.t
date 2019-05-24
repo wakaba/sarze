@@ -44,8 +44,16 @@ test {
     }, sub {
       my $e = $_[0];
       test {
-        is $e->is_network_error, $e;
+        ok $e->is_network_error, $e;
         ok $^O eq 'darwin';
+        #88323.1.1h1.1: S: Content-Length: 524288000\x0D
+        #88323.1.1h1.1: S: \x0D
+        #88323.1.1h1.1: S: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... (524288000)
+        #88323.1.1h1: S: EOF (Perl I/O error: Protocol wrong type for socket at t/max-request.t line 50.\x0A)
+        #88323.1.1: TCP: closed
+        #88323.1.1h1: R: EOF (Perl I/O error: Protocol wrong type for socket at t/max-request.t line 50.\x0A)
+        #88323.1.1h1: endstream 88323.1.1h1.1 Fri May 24 05:35:09 2019
+        #88323.1.1h1: ========== Web::Transport::HTTPStream::ClientConnection
       } $c;
     });
   });
@@ -88,7 +96,7 @@ test {
     }, sub {
       my $e = $_[0];
       test {
-        is $e->is_network_error, $e;
+        ok $e->is_network_error, $e;
         ok $^O eq 'darwin';
       } $c;
     });
