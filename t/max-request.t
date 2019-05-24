@@ -11,7 +11,9 @@ test {
   my $port1 = find_listenable_port;
 
   my $url1 = Web::URL->parse_string (qq<http://$host:$port1>);
-  my $client1 = Web::Transport::BasicClient->new_from_url ($url1);
+  my $client1 = Web::Transport::BasicClient->new_from_url ($url1, {
+    debug => 1,
+  });
 
   my $server;
   promised_cleanup {
@@ -28,6 +30,7 @@ test {
         return [200, [], ['OK!']];
       }
     },
+    debug => 1,
   )->then (sub {
     $server = $_[0];
     return Promise->all ([
