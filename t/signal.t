@@ -54,11 +54,13 @@ test {
     } $c;
     return $cmd->send_signal ($signal);
   })->then (sub {
+    return promised_sleep 1;
+  })->then (sub {
     return $client2->request (path => []);
   })->then (sub {
     my $res = $_[0];
     test {
-      ok $res->is_network_error;
+      ok $res->is_network_error, $res;
     } $c;
   });
 } n => 3, name => $signal;
