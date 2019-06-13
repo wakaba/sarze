@@ -512,6 +512,11 @@ test {
     test {
       is $temp_path->slurp, "22";
     } $c;
+  }, sub {
+    my $e = $_[0];
+    test {
+      ok 0, $e;
+    } $c;
   });
 } n => 1, name => 'destroy invoked after psgi and worker completion';
 
