@@ -315,6 +315,7 @@ It requires modules L<AnyEvnet::Socket> and L<AnyEvent::Fork>.
 It also requires following Perl modules (submodules of this Git
 repository): <https://github.com/wakaba/perl-promise> (which has
 L<Promise>, L<AbortController>, and L<AbortSignal>),
+<https://github.com/manakai/perl-streams>,
 <https://github.com/manakai/perl-web-datetime>,
 <https://github.com/manakai/perl-web-encodings>,
 <https://github.com/manakai/perl-web-resource>, and
