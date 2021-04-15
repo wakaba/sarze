@@ -80,6 +80,12 @@ sub _init_forker ($$) {
         $Sarze::Worker::LoadError = "%s->start is not defined";
       }
     }, quotemeta $cls, quotemeta $cls);
+    $self->{forker}->eval (sprintf q{
+      unless ("%s"->can ('custom')) {
+        $Sarze::Worker::LoadError = "%s->custom is not defined";
+      }
+    }, quotemeta $cls, quotemeta $cls)
+        if $self->{max}->{custom};
     if (defined $args->{worker_background_class}) {
       warn "Use of Sarze option |worker_background_class| is deprecated\n";
       $args->{worker_state_class} = 'Sarze::Worker::BackgroundWorkerState';
@@ -108,7 +114,8 @@ sub __create_check_worker ($) {
   return Promise->resolve (1) if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
-  my $worker = $self->{workers}->{$fork} = {shutdown => sub {}};
+  my $worker = $self->{workers}->{$fork} = {shutdown => sub {},
+                                            feature_set => 'check'};
 
   my ($start_ok, $start_ng) = @_;
   my $start_p = Promise->new (sub { ($start_ok, $start_ng) = @_ });
@@ -179,12 +186,13 @@ sub _create_check_worker ($) {
   } timeout => 60;
 } # _create_check_worker
 
-sub _create_worker ($$) {
-  my ($self, $onstop) = @_;
+sub _create_worker ($$$) {
+  my ($self, $onstop, $feature_set) = @_;
   return if $self->{shutdowning};
 
   my $fork = $self->{forker}->fork;
-  my $worker = $self->{workers}->{$fork} = {accepting => 1, shutdown => sub {}};
+  my $worker = $self->{workers}->{$fork} = {accepting => 1, shutdown => sub {},
+                                            feature_set => $feature_set};
 
   my $onnomore = sub {
     if ($worker->{accepting}) {
@@ -228,6 +236,7 @@ sub _create_worker ($$) {
     if ($self->{shutdowning}) {
       $hdl->push_write ("shutdown\x0A");
     } else {
+      $hdl->push_write ("feature_set $feature_set\x0A");
       $hdl->push_write ("parent_id $self->{id}\x0A");
       $worker->{shutdown} = sub { $hdl->push_write ("shutdown\x0A") if $hdl };
     }
@@ -244,17 +253,19 @@ sub _create_worker ($$) {
 
 sub _create_workers_if_necessary ($) {
   my ($self) = @_;
-  my $count = 0;
-  $count++ for grep { $_->{accepting} } values %{$self->{workers}};
-  while ($count < $self->{max_worker_count} and not $self->{shutdowning}) {
-    $self->_create_worker (sub {
-      $self->{timer} = AE::timer 1, 0, sub {
-        $self->_create_workers_if_necessary;
-        delete $self->{timer};
-      };
-    });
-    $count++;
-  }
+  for my $fs (qw(http custom)) {
+    my $count = 0;
+    $count++ for grep { $_->{accepting} and $_->{feature_set} eq $fs } values %{$self->{workers}};
+    while ($count < $self->{max}->{$fs} and not $self->{shutdowning}) {
+      $self->_create_worker (sub {
+        $self->{timer} = AE::timer 1, 0, sub {
+          $self->_create_workers_if_necessary;
+          delete $self->{timer};
+        };
+      }, $fs);
+      $count++;
+    }
+  } # $fs
 } # _create_workers_if_necessary
 
 sub start ($%) {
@@ -264,10 +275,13 @@ sub start ($%) {
 
   my $self = bless {
     workers => {},
-    max_worker_count => $args{max_worker_count} || 3,
     global_cv => AE::cv,
     id => $$ . 'sarze' . ++$Sarze::N, # {id} can't contain \x0A
   }, $class;
+  for my $fs (qw(custom)) {
+    $self->{max}->{$fs} = $args{max_counts}->{$fs} || 0;
+  }
+  $self->{max}->{http} = $args{max_worker_count} // 3;
 
   my @rstate;
   $self->{global_cv}->begin;
@@ -363,7 +377,7 @@ sub DESTROY ($) {
 
 =head1 LICENSE
 
-Copyright 2016-2017 Wakaba <wakaba@suikawiki.org>.
+Copyright 2016-2021 Wakaba <wakaba@suikawiki.org>.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

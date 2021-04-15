@@ -25,11 +25,12 @@ sub main {
   srand;
   my $wp = bless {%{$Sarze::Worker::Options},
                   id => $$,
+                  feature_set => 'unknown',
                   n => 0,
                   server_ws => []}, 'Sarze::Worker::Process';
   $wp->{parent_fh} = shift;
   $wp->{server_fhs} = [@_];
-  $wp->{state} = bless {}, 'Sarze::Worker::State';
+  $wp->{state} = bless {features => {}}, 'Sarze::Worker::State';
 
   my $worker_ac = AbortController->new;
   $wp->{state}->{abort} = sub {
@@ -106,6 +107,52 @@ sub main {
         };
       }
 
+      ## Accept HTTP connections
+      my $start_accept = sub {
+        for my $fh (@{$wp->{server_fhs}}) {
+          push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
+            while (1) {
+              $cons_cv->begin;
+              my ($args, $n) = $wp->accept_next ($fh);
+              unless (defined $args) {
+                $cons_cv->end;
+                last;
+              }
+
+              my $opts = {psgi_app => \&main::psgi_app,
+                          parent_id => $wp->{id},
+                          state => $wp->{state}};
+              $opts->{max_request_body_length} = $wp->{max_request_body_length}
+                  if defined $wp->{max_request_body_length}; # undef ignored
+              my $con = Web::Transport::PSGIServerConnection
+                  ->new_from_aeargs_and_opts ($args, $opts);
+              $wp->{connections}->{$con} = $con;
+              $con->completed->finally (sub {
+                $wp->log (sprintf "Connection completed (%s)", $con->id);
+                $cons_cv->end;
+                delete $wp->{connections}->{$con};
+              });
+            } # while
+          };
+        } # $fh
+      }; # $start_accept
+      my $cancel_accept = sub {
+        for (@{$wp->{wp_fhs}}) {
+          close $_;
+        }
+        $wp->{fhs} = [];
+      }; # $cancel_accept
+      my $start_custom = sub {
+        $cons_cv->begin;
+        Promise->resolve->then (sub {
+          return $wp->{worker_state_class}->custom ($wp->{state});
+        })->then (sub {
+          $cons_cv->end;
+        }, sub {
+          $cons_cv->croak ($_[0]);
+        });
+      }; # start_custom
+
       $wp->{parent_handle} = AnyEvent::Handle->new
           (fh => $wp->{parent_fh},
            on_read => sub {
@@ -113,9 +160,29 @@ sub main {
                my $line = $1;
                if ($line =~ /\Ashutdown\z/) {
                  $shutdown->();
+               } elsif ($line =~ s/^feature_set //) {
+                 $wp->{feature_set} = $line;
                } elsif ($line =~ s/^parent_id //) {
-                 $wp->{id} = $line . '.' . $$;
-                 $wp->log ("Worker started");
+                 $wp->{id} = $line . '.' . $$ . ({
+                   http => 'h',
+                   custom => 'c',
+                 }->{$wp->{feature_set}} // $wp->{feature_set});
+                 $wp->log ("Worker started ($wp->{feature_set})");
+                 if ($wp->{feature_set} eq 'http') {
+                   $wp->{state}->{features}->{http} = 1;
+                 }
+                 if ($wp->{feature_set} eq 'custom') {
+                   $wp->{state}->{features}->{custom} = 1;
+                 }
+                 if ($wp->{state}->{features}->{http}) {
+                   $start_accept->();
+                 } else {
+                   $cancel_accept->();
+                 }
+                 if ($wp->{state}->{features}->{custom}) {
+                   $start_custom->();
+                 }
+                 $start_accept = $cancel_accept = $start_custom = sub { };
                } else {
                  $wp->log ("Broken command from main process: |$line|");
                }
@@ -124,34 +191,6 @@ sub main {
            on_eof => sub { $_[0]->destroy },
            on_error => sub { $_[0]->destroy });
       # XXX should run $shutdown when connection is closed
-
-      ## Accept HTTP connections
-      for my $fh (@{$wp->{server_fhs}}) {
-        push @{$wp->{server_ws}}, AE::io $fh, 0, sub {
-          while (1) {
-            $cons_cv->begin;
-            my ($args, $n) = $wp->accept_next ($fh);
-            unless (defined $args) {
-              $cons_cv->end;
-              last;
-            }
-
-            my $opts = {psgi_app => \&main::psgi_app,
-                        parent_id => $wp->{id},
-                        state => $wp->{state}};
-            $opts->{max_request_body_length} = $wp->{max_request_body_length}
-                if defined $wp->{max_request_body_length}; # undef ignored
-            my $con = Web::Transport::PSGIServerConnection
-                ->new_from_aeargs_and_opts ($args, $opts);
-            $wp->{connections}->{$con} = $con;
-            $con->completed->finally (sub {
-              $wp->log (sprintf "Connection completed (%s)", $con->id);
-              $cons_cv->end;
-              delete $wp->{connections}->{$con};
-            });
-          } # while
-        };
-      } # $fh
 
       return Promise->from_cv ($cons_cv); # connections done
     })->catch (sub {
@@ -247,6 +286,8 @@ sub abort ($;$) {
   $_[0]->{abort}->($_[1]);
 } # abort
 
+sub features ($) { $_[0]->{features} }
+
 sub data ($) { return $_[0]->{data} }
 *background = \&data; # backcompat
 
@@ -312,7 +353,7 @@ sub DESTROY ($) {
 
 =head1 LICENSE
 
-Copyright 2016-2019 Wakaba <wakaba@suikawiki.org>.
+Copyright 2016-2021 Wakaba <wakaba@suikawiki.org>.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
