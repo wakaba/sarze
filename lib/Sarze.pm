@@ -234,10 +234,10 @@ sub _create_worker ($$$) {
            undef $hdl;
          });
     if ($self->{shutdowning}) {
-      $hdl->push_write ("shutdown\x0A");
+      $hdl->push_write ("shutdown\x0A") if $hdl;
     } else {
-      $hdl->push_write ("feature_set $feature_set\x0A");
-      $hdl->push_write ("parent_id $self->{id}\x0A");
+      $hdl->push_write ("feature_set $feature_set\x0A") if $hdl;
+      $hdl->push_write ("parent_id $self->{id}\x0A") if $hdl;
       $worker->{shutdown} = sub { $hdl->push_write ("shutdown\x0A") if $hdl };
     }
   });
