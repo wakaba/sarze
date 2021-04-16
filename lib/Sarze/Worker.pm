@@ -299,12 +299,11 @@ sub DESTROY ($) {
 } # DESTROY
 
 package Sarze::Worker::Process;
-use constant DEBUG => $ENV{WEBSERVER_DEBUG} || 0;
 use Web::Encoding;
 
 sub log ($$) {
   warn encode_web_utf8 sprintf "%s: %s [%s]\n",
-      $_[0]->{id}, $_[1], scalar gmtime time if DEBUG;
+      $_[0]->{id}, $_[1], scalar gmtime time if $_[0]->{debug};
 } # log
 
 sub accept_next ($$) {
@@ -345,7 +344,7 @@ sub dont_accept_anymore ($) {
 sub DESTROY ($) {
   local $@;
   eval { die };
-  warn "Reference to @{[ref $_[0]]} is not discarded before global destruction"
+  warn "$_[0]->{id}: Reference to @{[ref $_[0]]} is not discarded before global destruction"
       if $@ =~ /during global destruction/;
 } # DESTROY
 

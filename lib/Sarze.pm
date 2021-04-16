@@ -10,11 +10,10 @@ use AnyEvent::Fork;
 use Promise;
 use Promised::Flow;
 use Web::Encoding;
-use constant DEBUG => $ENV{WEBSERVER_DEBUG} || 0;
 
 sub log ($$) {
   warn encode_web_utf8 sprintf "%s: %s [%s]\n",
-      $_[0]->{id}, $_[1], scalar gmtime time if $_[0]->{debug} || DEBUG;
+      $_[0]->{id}, $_[1], scalar gmtime time if $_[0]->{debug};
 } # log
 
 sub _init_forker ($$) {
@@ -102,6 +101,7 @@ sub _init_forker ($$) {
     max_request_body_length => $args->{max_request_body_length},
     worker_state_class => $args->{worker_state_class},
     worker_state_params => $args->{worker_state_params}, # or undef
+    debug => $self->{debug},
   };
   $options =~ s/^\$VAR1 = /\$Sarze::Worker::Options = /;
   $self->{forker}->eval (encode_web_utf8 $options);
@@ -277,7 +277,7 @@ sub start ($%) {
     workers => {},
     global_cv => AE::cv,
     id => $$ . 'sarze' . ++$Sarze::N, # {id} can't contain \x0A
-    debug => $args{debug},
+    debug => 0+($args{debug} || $ENV{WEBSERVER_DEBUG} || 0),
   }, $class;
   for my $fs (qw(custom)) {
     $self->{max}->{$fs} = $args{max_counts}->{$fs} || 0;
