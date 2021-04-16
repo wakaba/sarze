@@ -85,7 +85,7 @@ test {
       sub DESTROY ($) {
         local $@;
         eval { die };
-        warn "Reference to @{[ref $_[0]]} is not discarded before global destruction\n"
+        warn "$$: Reference to @{[ref $_[0]]} is not discarded before global destruction\n"
             if $@ =~ /during global destruction/;
       } # DESTROY
     },
@@ -170,12 +170,12 @@ test {
       }
       sub stop {
         my $self = $_[0];
-        warn "Test: stop invoked";
+        warn "$$: Test: stop invoked";
         $Count++;
         $Stopped = 1;
         return promised_sleep (1)->then (sub {
           $Count++;
-          warn "Test: stop then invoked";
+          warn "$$: Test: stop then invoked";
           $self->{stop}->();
         });
       }
@@ -184,13 +184,13 @@ test {
       }
 
       sub destroy {
-        warn "Test: destroy invoked!";
+        warn "$$: Test: destroy invoked!";
         promised_sleep (1)->then (sub {
-          warn "Test: destroy then invoked!";
+          warn "$$: Test: destroy then invoked!";
           if (defined $TempFile) {
             print $TempFile $Count;
             close $TempFile;
-            warn qq{Test: destroy "$TempFile" written!};
+            warn qq{$$: Test: destroy "$TempFile" written!};
           }
         });
       }
@@ -210,12 +210,12 @@ test {
     return Promise->all ([
       @req, # after requests are sent (but not received response), stop server
       promised_sleep (1)->then (sub {
-        warn "Test: stop server...";
+        warn "$$: Test: stop server...";
         return $server->stop;
       }),
     ]);
   })->then (sub {
-    warn "Test: wait for temp...";
+    warn "$$: Test: wait for temp...";
     return promised_wait_until { -f $temp_path and $temp_path->slurp } timeout => 30;
   })->then (sub {
     test {
@@ -274,7 +274,7 @@ test {
       sub DESTROY ($) {
         local $@;
         eval { die };
-        warn "Reference to @{[ref $_[0]]} is not discarded before global destruction\n"
+        warn "$$: Reference to @{[ref $_[0]]} is not discarded before global destruction\n"
             if $@ =~ /during global destruction/;
       } # DESTROY
     },
