@@ -181,8 +181,9 @@ test {
       }
 
       sub destroy {
+        warn "Test: destroy invoked!";
         promised_sleep (1)->then (sub {
-          warn "Test: destroy invoked!";
+          warn "Test: destroy then invoked!";
           if (defined $TempFile) {
             print $TempFile $Count;
             close $TempFile;
