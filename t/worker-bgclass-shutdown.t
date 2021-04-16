@@ -206,7 +206,7 @@ test {
       promised_sleep (1)->then (sub { $server->stop }),
     ]);
   })->then (sub {
-    return promised_wait_until { -f $temp_path and $temp_path->slurp } timeout => 10;
+    return promised_wait_until { -f $temp_path and $temp_path->slurp } timeout => 30;
   })->then (sub {
     test {
       is $temp_path->slurp, "23";
