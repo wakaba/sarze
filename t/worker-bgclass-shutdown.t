@@ -169,10 +169,12 @@ test {
       }
       sub stop {
         my $self = $_[0];
+        warn "Test: stop invoked";
         $Count++;
         $Stopped = 1;
         return promised_sleep (1)->then (sub {
           $Count++;
+          warn "Test: stop then invoked";
           $self->{stop}->();
         });
       }
@@ -206,9 +208,13 @@ test {
     }) } @client;
     return Promise->all ([
       @req, # after requests are sent (but not received response), stop server
-      promised_sleep (1)->then (sub { $server->stop }),
+      promised_sleep (1)->then (sub {
+        warn "Test: stop server...";
+        return $server->stop;
+      }),
     ]);
   })->then (sub {
+    warn "Test: wait for temp...";
     return promised_wait_until { -f $temp_path and $temp_path->slurp } timeout => 30;
   })->then (sub {
     test {
