@@ -14,7 +14,7 @@ use constant DEBUG => $ENV{WEBSERVER_DEBUG} || 0;
 
 sub log ($$) {
   warn encode_web_utf8 sprintf "%s: %s [%s]\n",
-      $_[0]->{id}, $_[1], scalar gmtime time if DEBUG;
+      $_[0]->{id}, $_[1], scalar gmtime time if $_[0]->{debug} || DEBUG;
 } # log
 
 sub _init_forker ($$) {
@@ -277,6 +277,7 @@ sub start ($%) {
     workers => {},
     global_cv => AE::cv,
     id => $$ . 'sarze' . ++$Sarze::N, # {id} can't contain \x0A
+    debug => $args{debug},
   }, $class;
   for my $fs (qw(custom)) {
     $self->{max}->{$fs} = $args{max_counts}->{$fs} || 0;

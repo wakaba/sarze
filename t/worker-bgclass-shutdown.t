@@ -133,6 +133,7 @@ test {
     ],
     max_worker_count => 1,
     worker_background_class => 'Worker',
+    debug => 2,
     eval => q{
       use strict;
       use warnings;
