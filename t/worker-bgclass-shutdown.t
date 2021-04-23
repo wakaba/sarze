@@ -209,7 +209,7 @@ test {
     }) } @client;
     return Promise->all ([
       @req, # after requests are sent (but not received response), stop server
-      promised_sleep (1)->then (sub {
+      promised_sleep (3)->then (sub {
         warn "$$: Test: stop server...";
         return $server->stop;
       }),
