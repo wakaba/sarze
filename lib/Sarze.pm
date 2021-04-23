@@ -238,7 +238,16 @@ sub _create_worker ($$$) {
     } else {
       $hdl->push_write ("feature_set $feature_set\x0A") if $hdl;
       $hdl->push_write ("parent_id $self->{id}\x0A") if $hdl;
-      $worker->{shutdown} = sub { $hdl->push_write ("shutdown\x0A") if $hdl };
+      my $s = $self;
+      $worker->{shutdown} = sub {
+        if ($hdl) {
+          $hdl->push_write ("shutdown\x0A");
+          $s->log ("Send shutdown to a worker");
+        } else {
+          $s->log ("Failed to send shutdown to a worker");
+        }
+        undef $s;
+      };
     }
   });
 
