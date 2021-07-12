@@ -107,7 +107,7 @@ blessed object.
 
 Specify the number of the concurrent HTTP worker processes.
 
-=item max => {custom => $non_negative_integer}  (Default: 0)
+=item max_counts => {custom => $non_negative_integer}  (Default: 0)
 
 Specify the number of the concurrent custom worker processes.
 
@@ -228,10 +228,14 @@ The C<start> method is invoked before accepting any HTTP connections
 or invoking the C<custom> method.
 
 The C<custom> method is expect to run an application-dependent custom
-worker steps.  It is invoked with an argument: The worker process
-state object of the worker process (See L</WORKER PROCESS STATE
-OBJECT>).  The method should not throw.  The method should not return
-a promise that is rejected.
+worker steps.  It is invoked only once when a custom worker process is
+ready.  It is invoked with an argument: The worker process state
+object of the worker process (See L</WORKER PROCESS STATE OBJECT>).
+The method may or may not return a promise.  If it returns a promise,
+it may resolve the promise at any time.  It should not throw.  If it
+returns a promise, it should not be rejected.  Note that when the
+method returns (or the promise is resolved) is irrelevant to the
+lifecycle of the custom worker process.
 
 =item WORKER PROCESS STATE OBJECT
 

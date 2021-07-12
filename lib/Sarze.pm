@@ -242,9 +242,9 @@ sub _create_worker ($$$) {
       $worker->{shutdown} = sub {
         if ($hdl) {
           $hdl->push_write ("shutdown\x0A");
-          $s->log ("Send shutdown to a worker");
+          $s->log ("Send shutdown to a worker ($feature_set)");
         } else {
-          $s->log ("Failed to send shutdown to a worker");
+          $s->log ("Failed to send shutdown to a worker ($feature_set)");
         }
         undef $s;
       };
